@@ -108,6 +108,9 @@ Q_APP_NOTIFICATIONS = (
     "}"
 )
 
+M_UNSUBSCRIBE_RESOURCE = (
+    "mutation Desuscribir($id: String!) { unsubscribeResource(id: $id) }"
+)
 Q_APPLICATIONS = (
     "query Apps { applications { id name webhookUrl consumptionMode active } }"
 )
@@ -346,6 +349,15 @@ class OdmClient:
         """Lista suscripciones (para no resuscribir lo ya suscrito)."""
         return self.execute(Q_DATASET_SUBSCRIPTIONS,
                             {"appId": application_id, "resourceId": resource_id})["datasetSubscriptions"]
+
+    def unsubscribe_resource(self, subscription_id: str) -> bool:
+        """Da de baja una suscripción (por su id de suscripción)."""
+        return self.execute(M_UNSUBSCRIBE_RESOURCE, {"id": subscription_id})["unsubscribeResource"]
+
+    def delete_resource(self, resource_id: str, hard: bool = False) -> bool:
+        """Borra un recurso en ODM (soft por defecto). ODM lo rechaza si tiene
+        suscripciones activas (guardia de integridad)."""
+        return self.execute(M_DELETE_RESOURCE, {"id": resource_id, "hard": hard})["deleteResource"]
 
     def fetchers(self) -> list[dict]:
         """Lista fetchers con sus presets (para el asistente 'nueva fuente')."""

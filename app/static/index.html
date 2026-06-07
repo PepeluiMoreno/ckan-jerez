@@ -63,7 +63,7 @@ createApp({
     })
     const result = ref(null)
 
-    const filtros = reactive({ q:'', pub:'', soloSus:false })
+    const filtros = reactive({ q:'', pub:'', soloSus:true })
     const modal = reactive({ open:false, titulo:'', texto:'' })
     const lastOk = computed(() => {
       const m = {}
@@ -111,7 +111,8 @@ createApp({
     const loaders = {
       fuentes: async () => { const c = await api('/catalog'); Object.assign(catalog, c);
         try { resources.value = await api('/odm/resources') } catch {} },
-      suscripciones: async () => { subscriptions.value = await api('/odm/subscriptions') },
+      suscripciones: async () => { subscriptions.value = await api('/odm/subscriptions');
+        resources.value = await api('/odm/resources') },
       datos: async () => { resources.value = await api('/odm/resources'); executions.value = await api('/odm/executions');
         try { subscriptions.value = await api('/odm/subscriptions') } catch {} },
       entregas: async () => { notifications.value = await api('/odm/notifications') },
@@ -143,6 +144,26 @@ createApp({
       })
     }
     async function loadFetchers() { try { fetchers.value = await api('/odm/fetchers') } catch(e){ err.value=String(e.message||e) } }
+    const subByResource = computed(() => { const m={}; for (const s of subscriptions.value) m[s.resourceId]=s; return m })
+    function suscribir(rid) { run(async () => {
+      await api('/odm/subscribe', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid})})
+      subscriptions.value = await api('/odm/subscriptions')
+    }) }
+    function desuscribir(rid) {
+      const sub = subByResource.value[rid]; if (!sub) return
+      run(async () => {
+        await api('/odm/unsubscribe', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription_id:sub.id})})
+        subscriptions.value = await api('/odm/subscriptions')
+      })
+    }
+    function borrarRecurso(rid, nombre) {
+      if (!window.confirm(`¿Borrar en ODM el recurso «${nombre}»? (ODM lo rechazará si tiene suscripciones activas)`)) return
+      run(async () => {
+        await api('/odm/resource/delete', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid})})
+        resources.value = await api('/odm/resources')
+      })
+    }
+    const nameToId = computed(() => { const m={}; for (const r of resources.value) m[(r.name||'').trim().toLowerCase()]=r.id; return m })
     function getTemplate() { run(async () => {
       wizard.manifest=null; wizard.done=null
       const t = await api('/odm/manifest-template', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fetcherCode:wizard.fetcher, presetCode:wizard.preset||null})})
@@ -183,7 +204,7 @@ createApp({
 
     return { view, nav, odmStatus, appVersion, ram, ramPct, ramColor, status, err, busy,
              catalog, resources, subscriptions, executions, notifications, fetchers, wizard, presetsOf, result,
-             go, sync, sincronizar, refrescar, filtros, modal, lastOk, pubsDisponibles, recursosFiltrados, fmtAgo, getTemplate, enOdm, pickPub, addParam, delParam, previewSource, createSource }
+             go, sync, sincronizar, refrescar, filtros, modal, lastOk, pubsDisponibles, recursosFiltrados, fmtAgo, subByResource, suscribir, desuscribir, borrarRecurso, nameToId, getTemplate, enOdm, pickPub, addParam, delParam, previewSource, createSource }
   },
   template: `
   <!-- Sidebar -->
@@ -225,7 +246,10 @@ createApp({
       <div class="grid grid-cols-3 gap-4 mb-6">
         <div class="card p-4"><div class="text-xs text-gray-500 mb-1">ODM</div><div class="text-lg" :style="{color: odmStatus==='online'?'#34d399':'#f87171'}">{{ odmStatus }}</div></div>
         <div class="card p-4"><div class="text-xs text-gray-500 mb-1">CKAN</div><div class="text-lg">{{ status.ckan_configured ? 'configurado' : 'sin configurar' }}</div></div>
-        <div class="card p-4"><div class="text-xs text-gray-500 mb-1">Application</div><div class="text-sm truncate">{{ status.application || '—' }}</div></div>
+        <div class="card p-4"><div class="text-xs text-gray-500 mb-1">Application en ODM</div>
+          <div v-if="status.application" class="text-sm" style="color:#34d399">✓ registrada como «{{ status.application_name }}»<div class="text-xs text-gray-500 mt-0.5 truncate">webhook: {{ status.webhook_url || '—' }}</div></div>
+          <div v-else class="text-sm" style="color:#fbbf24">✗ NO registrada<div class="text-xs text-gray-500 mt-0.5">{{ (status.config_missing||[]).length ? 'faltan: '+status.config_missing.join(', ')+' (secreto de despliegue)' : 'pulsa Sincronizar' }}</div></div>
+        </div>
       </div>
       <div class="card p-5">
         <h3 class="text-sm font-semibold text-gray-200 mb-1">Sincronización con ODM</h3>
@@ -246,12 +270,14 @@ createApp({
           <tbody><tr v-for="s in catalog.sources" :key="s.name">
             <td class="text-gray-200">{{ s.name }}</td><td>{{ (catalog.publishers[s.publisher]||{}).nombre || s.publisher }}</td>
             <td><span class="pill bg-gray-700 text-gray-200">{{ s.fetcher }}</span></td><td class="text-gray-400">{{ s.preset || '—' }}</td>
-            <td><span class="pill" :style="enOdm(s.name) ? 'background:#064e3b;color:#34d399' : 'background:#78350f;color:#fbbf24'">{{ enOdm(s.name) ? 'en ODM' : 'pendiente' }}</span></td>
+            <td><span class="pill" :style="enOdm(s.name) ? 'background:#064e3b;color:#34d399' : 'background:#78350f;color:#fbbf24'">{{ enOdm(s.name) ? 'en ODM' : 'pendiente' }}</span>
+              <button v-if="enOdm(s.name)" class="btn btn-ghost ml-2" :disabled="busy" @click="borrarRecurso(nameToId[(s.name||'').trim().toLowerCase()], s.name)">Borrar</button></td>
           </tr>
           <tr v-for="r in resources.filter(r => !catalog.sources.some(s => s.name === r.name) && (catalog.subscribe_publishers||[]).some(a => r.publisher === a || r.publisher === ((catalog.publishers[a]||{}).nombre)))" :key="r.id">
             <td class="text-gray-300" :title="r.id">{{ r.name }}</td><td>{{ r.publisher }}</td>
             <td class="text-gray-500" colspan="2">heredado (en ODM, no declarado)</td>
-            <td><span class="pill" style="background:#1e3a8a;color:#93c5fd">adoptado</span></td>
+            <td><span class="pill" style="background:#1e3a8a;color:#93c5fd">adoptado</span>
+              <button class="btn btn-ghost ml-2" :disabled="busy" @click="borrarRecurso(r.id, r.name)">Borrar</button></td>
           </tr></tbody></table>
       </div>
       <div class="card p-5">
@@ -330,13 +356,31 @@ createApp({
     <!-- Suscripciones -->
     <div v-else-if="view==='suscripciones'">
       <h2 class="text-xl font-bold text-gray-100 mb-1">Suscripciones</h2>
-      <p class="text-sm text-gray-400 mb-5">Recursos a los que está suscrita esta Application (push por webhook).</p>
+      <p class="text-sm text-gray-400 mb-5">Suscríbete a cualquier recurso de ODM (lo hayas creado tú o no): ODM avisará por webhook cuando cargue datos nuevos.</p>
+      <div v-if="!status.application" class="card border-yellow-700 bg-yellow-900/20 text-yellow-200 px-4 py-2.5 mb-4 text-sm">
+        ⚠️ ckan-mgr aún no está registrada como Application en ODM, condición necesaria para suscribirse y recibir webhooks.
+        {{ (status.config_missing||[]).length ? 'Faltan en la configuración: '+status.config_missing.join(', ')+'.' : 'Pulsa «Sincronizar ahora» en el Dashboard.' }}
+      </div>
       <div class="card p-5">
-        <table class="w-full"><thead><tr><th>Resource</th><th>auto_upgrade</th><th>pinned</th><th>versión actual</th><th>notificado</th></tr></thead>
-          <tbody><tr v-for="s in subscriptions" :key="s.id">
-            <td class="text-gray-200" :title="s.resourceId">{{ s.resourceName || s.resourceId }}</td><td><span class="pill bg-blue-900 text-blue-300">{{ s.autoUpgrade }}</span></td>
-            <td>{{ s.pinnedVersion || '—' }}</td><td>{{ s.currentVersion || '—' }}</td><td class="text-gray-500">{{ s.notifiedAt || '—' }}</td>
-          </tr><tr v-if="!subscriptions.length"><td colspan="5" class="text-gray-500">Sin suscripciones.</td></tr></tbody></table>
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+          <input v-model="filtros.q" placeholder="Buscar por nombre o publisher…" class="flex-1 min-w-64 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200">
+          <select v-model="filtros.pub" class="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+            <option value="">Publisher: todos</option>
+            <option v-for="p in pubsDisponibles" :key="p" :value="p">{{ p }}</option>
+          </select>
+        </div>
+        <table class="w-full"><thead><tr><th>Recurso</th><th>Publisher</th><th>Suscripción</th><th></th></tr></thead>
+          <tbody><tr v-for="r in resources.filter(r => (!filtros.q || (r.name||'').toLowerCase().includes(filtros.q.toLowerCase()) || (r.publisher||'').toLowerCase().includes(filtros.q.toLowerCase())) && (!filtros.pub || r.publisher===filtros.pub))" :key="r.id">
+            <td class="text-gray-200" :title="r.id">{{ r.name }}</td><td class="text-gray-400">{{ r.publisher || '—' }}</td>
+            <td>
+              <span v-if="subByResource[r.id]" class="pill" style="background:#064e3b;color:#34d399">suscrito · {{ subByResource[r.id].autoUpgrade }}</span>
+              <span v-else class="pill bg-gray-700 text-gray-400">no suscrito</span>
+            </td>
+            <td class="text-right">
+              <button v-if="subByResource[r.id]" class="btn btn-ghost" :disabled="busy" @click="desuscribir(r.id)">Desuscribir</button>
+              <button v-else class="btn btn-primary" :disabled="busy || !status.application" @click="suscribir(r.id)">Suscribir</button>
+            </td>
+          </tr><tr v-if="!resources.length"><td colspan="4" class="text-gray-500">Sin recursos.</td></tr></tbody></table>
       </div>
     </div>
 

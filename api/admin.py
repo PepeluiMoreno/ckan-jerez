@@ -77,11 +77,19 @@ def system_info() -> dict:
 @router.get("/status")
 def status() -> dict:
     s = get_settings()
-    out = {"ckan_configured": s.ckan_configured, "odm": "unknown", "application": None}
+    faltan = [k for k, v in (("PUBLIC_BASE_URL", s.public_base_url),
+                             ("ODM_WEBHOOK_SECRET", s.odm_webhook_secret)) if not v]
+    out = {"ckan_configured": s.ckan_configured, "odm": "unknown",
+           "application": None, "application_name": None, "webhook_url": None,
+           "config_missing": faltan}
     try:
         c = _client_or_error()
         out["odm"] = "online"
-        out["application"] = _app_id(c)
+        app = next((a for a in c.applications() if a.get("name") == APP_NAME), None)
+        if app:
+            out["application"] = app["id"]
+            out["application_name"] = app.get("name")
+            out["webhook_url"] = app.get("webhookUrl")
     except Exception as e:  # noqa: BLE001
         out["odm"] = "offline"
         out["error"] = str(e)
@@ -129,6 +137,37 @@ def odm_notifications() -> Any:
         app_id = _app_id(c)
         return c.application_notifications(application_id=app_id) if app_id else []
     return _odm(_solo_nuestras)
+
+
+@router.post("/odm/subscribe")
+def subscribe(body: dict = Body(...)) -> Any:
+    rid = body.get("resource_id")
+    if not rid:
+        raise HTTPException(status_code=400, detail="falta resource_id")
+    def _sub(c):
+        app_id = _app_id(c)
+        if not app_id:
+            raise HTTPException(status_code=400, detail=(
+                "ckan-mgr aún no está registrada como Application en ODM. Completa la "
+                "configuración (PUBLIC_BASE_URL, ODM_WEBHOOK_SECRET) y pulsa Sincronizar."))
+        return c.subscribe_resource(application_id=app_id, resource_id=rid)
+    return _odm(_sub)
+
+
+@router.post("/odm/unsubscribe")
+def unsubscribe(body: dict = Body(...)) -> Any:
+    sid = body.get("subscription_id")
+    if not sid:
+        raise HTTPException(status_code=400, detail="falta subscription_id")
+    return _odm(lambda c: {"ok": c.unsubscribe_resource(sid)})
+
+
+@router.post("/odm/resource/delete")
+def resource_delete(body: dict = Body(...)) -> Any:
+    rid = body.get("resource_id")
+    if not rid:
+        raise HTTPException(status_code=400, detail="falta resource_id")
+    return _odm(lambda c: {"ok": c.delete_resource(rid)})
 
 
 # ── Acciones (escritura) ──────────────────────────────────────────────────────
