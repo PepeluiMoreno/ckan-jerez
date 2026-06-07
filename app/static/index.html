@@ -90,8 +90,15 @@ createApp({
     function go(id) { view.value = id; result.value=null; if (loaders[id]) run(loaders[id]) }
 
     // acciones
-    function provision(dry) { run(async () => { result.value = await api('/sources/provision', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dry_run:dry})}) }) }
-    function doBootstrap(dry) { run(async () => { result.value = await api('/bootstrap', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dry_run:dry})}) }) }
+    const sync = reactive({ msg:'', detail:null })
+    function sincronizar() { run(async () => {
+      sync.msg=''; sync.detail=null
+      const out = await api('/bootstrap', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dry_run:false})})
+      const nuevas = (out.subscribed||[]).length, ya = (out.already_subscribed||[]).length
+      sync.msg = `Sincronizado: catálogo aplicado · Application registrada · ${nuevas+ya} suscripciones (${nuevas} nuevas)`
+      sync.detail = out
+      await loadStatus()
+    }) }
     function refrescar(rid) { run(async () => { result.value = await api('/odm/execute', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid})}); await loaders.datos() }) }
     async function loadFetchers() { try { fetchers.value = await api('/odm/fetchers') } catch(e){ err.value=String(e.message||e) } }
     function getTemplate() { run(async () => {
@@ -134,7 +141,7 @@ createApp({
 
     return { view, nav, odmStatus, appVersion, ram, ramPct, ramColor, status, err, busy,
              catalog, resources, subscriptions, executions, notifications, fetchers, wizard, presetsOf, result,
-             go, provision, doBootstrap, refrescar, getTemplate, enOdm, pickPub, addParam, delParam, previewSource, createSource }
+             go, sync, sincronizar, refrescar, getTemplate, enOdm, pickPub, addParam, delParam, previewSource, createSource }
   },
   template: `
   <!-- Sidebar -->
@@ -179,14 +186,12 @@ createApp({
         <div class="card p-4"><div class="text-xs text-gray-500 mb-1">Application</div><div class="text-sm truncate">{{ status.application || '—' }}</div></div>
       </div>
       <div class="card p-5">
-        <h3 class="text-sm font-semibold text-gray-200 mb-3">Aprovisionamiento y bootstrap</h3>
-        <div class="flex flex-wrap gap-2">
-          <button class="btn btn-ghost" :disabled="busy" @click="provision(true)">Previsualizar provisioning</button>
-          <button class="btn btn-primary" :disabled="busy" @click="provision(false)">Aprovisionar (aplicar)</button>
-          <button class="btn btn-ghost" :disabled="busy" @click="doBootstrap(true)">Bootstrap (dry-run)</button>
-          <button class="btn btn-primary" :disabled="busy" @click="doBootstrap(false)">Bootstrap (aplicar)</button>
-        </div>
-        <pre v-if="result" class="mt-4">{{ JSON.stringify(result, null, 2) }}</pre>
+        <h3 class="text-sm font-semibold text-gray-200 mb-1">Sincronización con ODM</h3>
+        <p class="text-xs text-gray-500 mb-3">Se sincroniza sola al arrancar (recursos declarados, registro como aplicación y suscripciones). Este botón fuerza una sincronización ahora.</p>
+        <button class="btn btn-primary" :disabled="busy" @click="sincronizar">{{ busy ? 'Sincronizando…' : 'Sincronizar ahora' }}</button>
+        <div v-if="sync.msg" class="card border-green-700 bg-green-900/30 text-green-200 px-4 py-2.5 mt-3 text-sm">✅ {{ sync.msg }}</div>
+        <details v-if="sync.detail" class="mt-2"><summary class="text-xs text-gray-500 cursor-pointer">detalle técnico</summary>
+          <pre class="mt-2">{{ JSON.stringify(sync.detail, null, 2) }}</pre></details>
       </div>
     </div>
 
