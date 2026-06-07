@@ -81,7 +81,8 @@ createApp({
     async function loadStatus() { try { const d = await api('/status'); Object.assign(status,d); odmStatus.value = d.odm==='online'?'online':'offline' } catch(e){ odmStatus.value='offline' } }
 
     const loaders = {
-      fuentes: async () => { const c = await api('/catalog'); Object.assign(catalog, c) },
+      fuentes: async () => { const c = await api('/catalog'); Object.assign(catalog, c);
+        try { resources.value = await api('/odm/resources') } catch {} },
       suscripciones: async () => { subscriptions.value = await api('/odm/subscriptions') },
       datos: async () => { resources.value = await api('/odm/resources'); executions.value = await api('/odm/executions') },
       entregas: async () => { notifications.value = await api('/odm/notifications') },
@@ -102,6 +103,7 @@ createApp({
       wizard.form.params = tparams.map(p => ({key:p.key, value:p.value}))
       if (!wizard.form.params.some(p=>p.key==='root_url')) wizard.form.params.push({key:'root_url', value:''})
     }) }
+    function enOdm(name) { return resources.value.some(r => (r.name||'').trim().toLowerCase() === (name||'').trim().toLowerCase()) }
     function pickPub() {
       const k = wizard.form.pub
       if (k && catalog.publishers[k]) wizard.form.publisher = {acronimo:k, ...catalog.publishers[k]}
@@ -132,7 +134,7 @@ createApp({
 
     return { view, nav, odmStatus, appVersion, ram, ramPct, ramColor, status, err, busy,
              catalog, resources, subscriptions, executions, notifications, fetchers, wizard, presetsOf, result,
-             go, provision, doBootstrap, refrescar, getTemplate, pickPub, addParam, delParam, previewSource, createSource }
+             go, provision, doBootstrap, refrescar, getTemplate, enOdm, pickPub, addParam, delParam, previewSource, createSource }
   },
   template: `
   <!-- Sidebar -->
@@ -193,11 +195,11 @@ createApp({
       <h2 class="text-xl font-bold text-gray-100 mb-1">Recursos</h2>
       <p class="text-sm text-gray-400 mb-5">Orígenes de datos de los que se abastece CKAN-Jerez.</p>
       <div class="card p-5 mb-6">
-        <h3 class="text-sm font-semibold text-gray-200 mb-3">Catálogo declarado</h3>
-        <table class="w-full"><thead><tr><th>Nombre</th><th>Publisher</th><th>Fetcher</th><th>Preset</th></tr></thead>
+        <table class="w-full"><thead><tr><th>Nombre</th><th>Publisher</th><th>Fetcher</th><th>Preset</th><th>Estado</th></tr></thead>
           <tbody><tr v-for="s in catalog.sources" :key="s.name">
             <td class="text-gray-200">{{ s.name }}</td><td>{{ (catalog.publishers[s.publisher]||{}).nombre || s.publisher }}</td>
             <td><span class="pill bg-gray-700 text-gray-200">{{ s.fetcher }}</span></td><td class="text-gray-400">{{ s.preset || '—' }}</td>
+            <td><span class="pill" :style="enOdm(s.name) ? 'background:#064e3b;color:#34d399' : 'background:#78350f;color:#fbbf24'">{{ enOdm(s.name) ? 'en ODM' : 'pendiente' }}</span></td>
           </tr></tbody></table>
       </div>
       <div class="card p-5">
@@ -257,6 +259,9 @@ createApp({
               <input v-model="wizard.form.schedule" placeholder="0 4 1 * *" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
           </div>
 
+          <div v-if="wizard.form.name && enOdm(wizard.form.name)" class="text-xs" style="color:#fbbf24">
+            ⚠️ Ya existe en ODM un recurso con ese nombre: al crear se ACTUALIZARÁ (no se duplica).
+          </div>
           <div class="flex gap-2">
             <button class="btn btn-ghost" :disabled="busy" @click="previewSource">Previsualizar manifiesto</button>
             <button class="btn btn-primary" :disabled="busy || !wizard.form.name" @click="createSource">Crear en ODM</button>
