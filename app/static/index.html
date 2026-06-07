@@ -38,7 +38,7 @@ createApp({
     const view = ref('recursos')
     const nav = [
       { id:'recursos', label:'🗂️ Recursos' },
-      { id:'actividad', label:'📨 Actividad' },
+      { id:'actividad', label:'📨 Entregas' },
     ]
     const err = ref('')
     const busy = ref(false)
@@ -54,7 +54,7 @@ createApp({
     const fetchers = ref([])
     const odmPubs = ref([])
 
-    const filtros = reactive({ q:'', pub:'', soloSus:false })
+    const filtros = reactive({ q:'', pub:'', soloSus:true })
     const modal = reactive({ open:false, titulo:'', texto:'' })
     const showWizard = ref(false)
     const wizard = reactive({
@@ -129,7 +129,6 @@ createApp({
     }
     async function loadActividad() {
       try { notifications.value = await api('/odm/notifications') } catch {}
-      try { executions.value = await api('/odm/executions') } catch {}
     }
     const loaders = { recursos: loadRecursos, actividad: loadActividad }
     function go(id) { view.value = id; if (loaders[id]) run(loaders[id]) }
@@ -378,25 +377,15 @@ createApp({
 
     <!-- Actividad -->
     <div v-else-if="view==='actividad'">
-      <h2 class="text-xl font-bold text-gray-100 mb-1">Actividad</h2>
-      <p class="text-sm text-gray-400 mb-5">Entregas de webhook recibidas y ejecuciones recientes en ODM.</p>
+      <h2 class="text-xl font-bold text-gray-100 mb-1">Entregas</h2>
+      <p class="text-sm text-gray-400 mb-5">Webhooks que ODM ha entregado a CKAN-Jerez con datos nuevos.</p>
       <div class="card p-5 mb-6">
-        <h3 class="text-sm font-semibold text-gray-200 mb-3">Entregas (webhooks de ODM)</h3>
         <table class="w-full"><thead><tr><th>Enviado</th><th>Dataset</th><th>HTTP</th><th>Error</th></tr></thead>
           <tbody><tr v-for="n in notifications" :key="n.id">
             <td class="text-gray-500">{{ fmtAgo(n.sentAt) }}</td><td>{{ n.datasetId || '—' }}</td>
             <td><span class="pill" :style="{background: n.statusCode>=200&&n.statusCode<300?'#064e3b':'#7f1d1d', color: n.statusCode>=200&&n.statusCode<300?'#34d399':'#f87171'}">{{ n.statusCode || '—' }}</span></td>
             <td class="text-red-300">{{ n.errorMessage || '' }}</td>
           </tr><tr v-if="!notifications.length"><td colspan="4" class="text-gray-500">Sin entregas todavía.</td></tr></tbody></table>
-      </div>
-      <div class="card p-5">
-        <h3 class="text-sm font-semibold text-gray-200 mb-3">Ejecuciones en ODM</h3>
-        <table class="w-full"><thead><tr><th>Recurso</th><th>Estado</th><th>Inicio</th><th>Registros</th></tr></thead>
-          <tbody><tr v-for="e in executions.slice(0,30)" :key="e.id">
-            <td>{{ e.resourceName || e.resourceId }}</td>
-            <td><span class="pill" :style="{background: e.status==='completed'?'#064e3b':e.status==='failed'?'#7f1d1d':'#374151', color: e.status==='completed'?'#34d399':e.status==='failed'?'#f87171':'#cbd5e1'}">{{ e.status }}</span></td>
-            <td class="text-gray-500">{{ fmtAgo(e.startedAt) }}</td><td>{{ e.recordsLoaded ?? e.totalRecords ?? '—' }}</td>
-          </tr><tr v-if="!executions.length"><td colspan="4" class="text-gray-500">Sin ejecuciones.</td></tr></tbody></table>
       </div>
     </div>
   </div>
