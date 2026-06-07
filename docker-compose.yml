@@ -15,6 +15,7 @@ services:
       ODM_USER: ${ODM_USER:-}                  # cuenta de servicio (mínimo privilegio)
       ODM_PASSWORD: ${ODM_PASSWORD:-}
       ODM_WEBHOOK_SECRET: ${ODM_WEBHOOK_SECRET:-}   # verifica el HMAC del webhook
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}     # URL pública (webhook que se registra en ODM)
       CKAN_URL: ${CKAN_URL:-}                  # CKAN propio (salida homogénea)
       CKAN_API_TOKEN: ${CKAN_API_TOKEN:-}
       APP_VERSION: ${BUILD_SHA:-dev}

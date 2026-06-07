@@ -6,6 +6,8 @@ services:
   ckan-jerez:
     image: ghcr.io/pepeluimoreno/ckan-jerez:latest
     container_name: ckan-mgr
+    environment:
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://ckan-mgr.pepelui.es}
     networks:
       - internal
       - traefik_public           # red EXTERNA de Traefik
