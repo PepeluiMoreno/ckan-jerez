@@ -1,46 +1,49 @@
-[
-  {
-    "name": "Jerez — Portal de Transparencia (censo documental)",
-    "fetcher_name": "Web Tree",
-    "variante": "Censo documental",
-    "publisher": "Ayuntamiento de Jerez de la Frontera",
-    "target_table": "jerez_censo_documental",
-    "description": "Inventario del árbol documental del Portal de Transparencia: una fila por documento (sección, URL, nombre, formato), sin extraer. Insumo del catálogo CKAN.",
-    "params": {
-      "root_url": "https://transparencia.jerez.es/infopublica/economica",
-      "crawl_mode": "tree"
+{
+  "publishers": {
+    "AYTOJEREZ": {
+      "nombre": "Ayuntamiento de Jerez de la Frontera",
+      "nivel": "MUNICIPAL",
+      "pais": "España",
+      "portal_url": "https://transparencia.jerez.es"
     }
   },
-  {
-    "name": "Jerez — Ejecución del gasto (datos)",
-    "fetcher_name": "Web Tree",
-    "variante": "Extracción de datos",
-    "publisher": "Ayuntamiento de Jerez de la Frontera",
-    "target_table": "jerez_ejecucion_gasto",
-    "description": "Series tabulares de ejecución presupuestaria del gasto, parseadas a filas.",
-    "params": {
-      "root_url": "https://transparencia.jerez.es/infopublica/economica",
-      "path_prefix": "a-presupuesto/03-ejecucionAyto"
+  "sources": [
+    {
+      "name": "Jerez — Portal de Transparencia (censo documental)",
+      "publisher": "AYTOJEREZ",
+      "fetcher": "Web Tree",
+      "preset": "Censo documental",
+      "description": "Inventario del árbol documental del Portal de Transparencia: una fila por documento (sección, URL, nombre, formato), sin extraer.",
+      "params": {
+        "root_url": "https://transparencia.jerez.es/infopublica/economica",
+        "crawl_mode": "tree"
+      }
+    },
+    {
+      "name": "Jerez — Ejecución del gasto (datos)",
+      "publisher": "AYTOJEREZ",
+      "fetcher": "Web Tree",
+      "preset": "Extracción de datos",
+      "description": "Series tabulares de ejecución presupuestaria del gasto, parseadas a filas.",
+      "params": {
+        "root_url": "https://transparencia.jerez.es/infopublica/economica",
+        "path_prefix": "a-presupuesto/03-ejecucionAyto"
+      }
+    },
+    {
+      "name": "Jerez — PMP mensual (receta)",
+      "publisher": "AYTOJEREZ",
+      "fetcher": "Web Tree",
+      "preset": "Extracción con receta",
+      "description": "Periodo medio de pago a proveedores: una fila por informe mensual, capturada por receta.",
+      "params": {
+        "root_url": "https://transparencia.jerez.es/infopublica/economica",
+        "path_prefix": "c-deuda",
+        "receta": [
+          { "campo": "periodo_medio_pago_global", "etiqueta": "Periodo Medio de Pago Global", "tipo": "numero", "posicion": "derecha" }
+        ]
+      }
     }
-  },
-  {
-    "name": "Jerez — PMP mensual (receta)",
-    "fetcher_name": "Web Tree",
-    "variante": "Extracción con receta",
-    "publisher": "Ayuntamiento de Jerez de la Frontera",
-    "target_table": "jerez_pmp_mensual",
-    "description": "Periodo medio de pago a proveedores: una fila por informe mensual, capturada por receta.",
-    "params": {
-      "root_url": "https://transparencia.jerez.es/infopublica/economica",
-      "path_prefix": "c-deuda",
-      "receta": [
-        {
-          "campo": "periodo_medio_pago_global",
-          "etiqueta": "Periodo Medio de Pago Global",
-          "tipo": "numero",
-          "posicion": "derecha"
-        }
-      ]
-    }
-  }
-]
+  ],
+  "_nota": "Catálogo HETEROGÉNEO en dos ejes: varios PUBLISHERS (además de AYTOJEREZ caben Diputación de Cádiz, Junta de Andalucía, BDNS/PLACSP filtrados para Jerez…) y varios FETCHERS (Web Tree, API REST, File Download, Feeds ATOM/RSS…). Cada fuente referencia su publisher por acrónimo y declara su fetcher+preset+params. Se compila a un manifiesto por publisher."
+}

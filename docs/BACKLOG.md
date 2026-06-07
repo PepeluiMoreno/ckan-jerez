@@ -33,6 +33,15 @@ Convención: `[ ]` pendiente · `[x]` hecho · `[-]` descartado.
 
 ## Hecho
 
+- [x] **`odm_client` extendido**: manifiestos (`manifest_template`, `import_manifest`),
+  identidad/suscripción (`create_application`, `set_application_webhook`,
+  `subscribe_resource`) y observabilidad (`resource_executions`,
+  `application_notifications`). Documentos validados contra el SDL real.
+- [x] **Aprovisionamiento por manifiesto** (`services/provisioning.py`): catálogo
+  HETEROGÉNEO (multi-publisher, multi-fetcher) → un manifiesto por publisher
+  (`build_manifests`) e import idempotente (`provision_catalog`); asistente
+  'nueva fuente' sobre `manifestTemplate` (`build_source_manifest`/`provision_source`).
+  `jerez.json` reestructurado como catálogo. 17 tests verdes.
 - [x] **Orquestación discover → política → promote** (`services/pilot.py`):
   política de variantes de Jerez (token de receta→receta, tabular puro→datos,
   prosa/mixto→censo) y `discover_and_promote` (dry-run por defecto). Tests verdes.

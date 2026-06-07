@@ -86,28 +86,37 @@ de un rol de mínimo privilegio (`recursos.crear`, `recursos.editar` y lectura).
 Se autentica en `/api/auth/login` y reutiliza la cookie de sesión, re-autenticando
 ante un error de permiso. (`services/odm_client.py`.)
 
-### 4.1. Declaración de recursos
+### 4.1. Declaración de recursos (catálogo heterogéneo)
 
-`data/odm_resources/jerez.json` declara lo que ODM debe cosechar; `ckan-jerez`
-aplica esa declaración a ODM mediante **mutaciones GraphQL**
-(`services/odm_client.py`), seleccionando el **Web Tree fetcher** —el adecuado
-para el árbol documental del portal— y configurando sus variantes (*censo*,
-*datos*, *receta*). Cada recurso sigue el esquema:
+`ckan-jerez` es un **homogeneizador / REST-apificador**: ODM cosecha un mundo
+heterogéneo (Web Tree sobre portales, API REST, descargas de fichero, feeds
+ATOM…) de **distintos organismos**, y `ckan-jerez` lo publica uniforme. Por eso su
+catálogo, `data/odm_resources/jerez.json`, es heterogéneo en dos ejes: **varios
+publishers** (Ayuntamiento de Jerez, Diputación de Cádiz, Junta…) y **varios
+fetchers**. Cada fuente es una *especie* genérica de fetcher **particularizada con
+params** (y, si procede, un `preset`) para el caso concreto:
 
 ```json
 {
-  "name": "Nombre del recurso en ODM",
-  "fetcher_name": "WEB_TREE",
-  "publisher_acronimo": "AYTO-JEREZ",
-  "target_table": "nombre_tabla",
-  "load_mode": "replace",
-  "description": "Descripción del recurso",
-  "params": { "root_url": "…", "extract_mode": "…", "recetas": [] }
+  "publishers": {
+    "AYTOJEREZ": { "nombre": "Ayuntamiento de Jerez…", "nivel": "MUNICIPAL" }
+  },
+  "sources": [
+    { "name": "…", "publisher": "AYTOJEREZ", "fetcher": "Web Tree",
+      "preset": "Extracción de datos", "params": { "root_url": "…" } }
+  ]
 }
 ```
 
-La definición es idempotente: crea, actualiza o deja intacto cada recurso según
-difiera o no de lo ya definido en ODM.
+Como el manifiesto de ODM es **por-publisher**, el catálogo se compila a **un
+manifiesto por publisher** (`services/provisioning.py: build_manifests`) y se
+importa cada uno con `importManifest` (`provision_catalog`). La importación es
+**idempotente**: publisher por `acronimo`, recurso por `(publisher, name)`;
+reimportar actualiza, no duplica.
+
+Para dar de alta una fuente nueva de forma asistida, `provision_source` pide a
+ODM una **plantilla** (`manifestTemplate`) del fetcher+preset elegido, se rellena
+con los hechos (publisher, nombre, params) y se importa.
 
 > **Los recursos se crean en ODM por su API GraphQL, nunca tocando su base de
 > datos.** El contrato y las operaciones (incluido el flujo de discovery) están

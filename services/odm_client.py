@@ -62,6 +62,52 @@ M_DELETE_RESOURCE = (
     "}"
 )
 
+Q_MANIFEST_TEMPLATE = (
+    "query Plantilla($fetcherCode: String!, $presetCode: String) {"
+    "  manifestTemplate(fetcherCode: $fetcherCode, presetCode: $presetCode)"
+    "}"
+)
+M_IMPORT_MANIFEST = (
+    "mutation Importar($manifest: JSON!) { importManifest(manifest: $manifest) }"
+)
+M_CREATE_APPLICATION = (
+    "mutation CrearApp($input: CreateApplicationInput!) {"
+    "  createApplication(input: $input) {"
+    "    id name active consumptionMode webhookUrl subscribedProjects"
+    "  }"
+    "}"
+)
+M_SET_APP_WEBHOOK = (
+    "mutation Webhook($id: String!, $url: String!, $secret: String!) {"
+    "  setApplicationWebhook(id: $id, webhookUrl: $url, webhookSecret: $secret) {"
+    "    id name webhookUrl consumptionMode"
+    "  }"
+    "}"
+)
+M_SUBSCRIBE_RESOURCE = (
+    "mutation Suscribir($appId: String!, $resourceId: String!, $pinned: String, $auto: String!) {"
+    "  subscribeResource(applicationId: $appId, resourceId: $resourceId,"
+    "                    pinnedVersion: $pinned, autoUpgrade: $auto) {"
+    "    id applicationId resourceId pinnedVersion autoUpgrade currentVersion notifiedAt"
+    "  }"
+    "}"
+)
+Q_RESOURCE_EXECUTIONS = (
+    "query Ejecuciones($resourceId: String) {"
+    "  resourceExecutions(resourceId: $resourceId) {"
+    "    id resourceId resourceName status startedAt completedAt"
+    "    totalRecords recordsLoaded errorMessage"
+    "  }"
+    "}"
+)
+Q_APP_NOTIFICATIONS = (
+    "query Entregas($applicationId: String) {"
+    "  applicationNotifications(applicationId: $applicationId) {"
+    "    id applicationId datasetId sentAt statusCode responseBody errorMessage"
+    "  }"
+    "}"
+)
+
 _AUTH_HINTS = ("permis", "autoriz", "autenticad", "no autenticado", "sesión",
                "sesion", "forbidden", "unauthorized", "login")
 
@@ -222,3 +268,50 @@ class OdmClient:
         execution = self.execute_resource(crawler_resource_id, params)
         candidates = self.resource_candidates(crawler_resource_id=crawler_resource_id)
         return {"execution": execution, "candidates": candidates}
+
+    # ── Manifiestos (aprovisionamiento idempotente) ───────────────────────────
+    def manifest_template(self, fetcher_code: str, preset_code: Optional[str] = None) -> dict:
+        """Pide a ODM un manifiesto-plantilla (esqueleto) para un fetcher y, si se
+        indica, una variante/preset. Es la base del asistente 'nueva fuente'."""
+        return self.execute(Q_MANIFEST_TEMPLATE,
+                            {"fetcherCode": fetcher_code, "presetCode": preset_code})["manifestTemplate"]
+
+    def import_manifest(self, manifest: dict) -> dict:
+        """Importa un manifiesto en ODM (upsert idempotente). Devuelve el resumen
+        {ok, created, updated, skipped, conflicts, errors}."""
+        return self.execute(M_IMPORT_MANIFEST, {"manifest": manifest})["importManifest"]
+
+    # ── Identidad y suscripciones del suscriptor ──────────────────────────────
+    def create_application(self, *, name: str, description: Optional[str] = None,
+                           webhook_url: Optional[str] = None,
+                           consumption_mode: str = "webhook",
+                           subscribed_projects: Optional[list[str]] = None) -> dict:
+        """Registra la Application de este suscriptor en ODM."""
+        inp: dict[str, Any] = {"name": name, "consumptionMode": consumption_mode,
+                               "subscribedProjects": subscribed_projects or []}
+        if description is not None:
+            inp["description"] = description
+        if webhook_url is not None:
+            inp["webhookUrl"] = webhook_url
+        return self.execute(M_CREATE_APPLICATION, {"input": inp})["createApplication"]
+
+    def set_application_webhook(self, application_id: str, webhook_url: str, webhook_secret: str) -> dict:
+        """Registra el endpoint+secreto de webhook de esta Application en ODM."""
+        return self.execute(M_SET_APP_WEBHOOK,
+                            {"id": application_id, "url": webhook_url, "secret": webhook_secret})["setApplicationWebhook"]
+
+    def subscribe_resource(self, *, application_id: str, resource_id: str,
+                           auto_upgrade: str = "patch", pinned_version: Optional[str] = None) -> dict:
+        """Suscribe la Application a un recurso (push vía webhook) con política de versión."""
+        return self.execute(M_SUBSCRIBE_RESOURCE,
+                            {"appId": application_id, "resourceId": resource_id,
+                             "pinned": pinned_version, "auto": auto_upgrade})["subscribeResource"]
+
+    # ── Observabilidad (refresco y entregas) ──────────────────────────────────
+    def resource_executions(self, resource_id: Optional[str] = None) -> list[dict]:
+        """Historial/estado de ejecuciones (refresco) de un recurso (o de todos)."""
+        return self.execute(Q_RESOURCE_EXECUTIONS, {"resourceId": resource_id})["resourceExecutions"]
+
+    def application_notifications(self, application_id: Optional[str] = None) -> list[dict]:
+        """Auditoría de entregas de webhook a esta Application (sentAt, statusCode, error)."""
+        return self.execute(Q_APP_NOTIFICATIONS, {"applicationId": application_id})["applicationNotifications"]

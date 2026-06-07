@@ -16,6 +16,13 @@ sys.path.insert(0, str(ROOT))
 from services.odm_client import (  # noqa: E402
     M_CREATE_RESOURCE, M_DELETE_RESOURCE, M_EXECUTE_RESOURCE, M_PROMOTE_CANDIDATE,
     Q_FETCHERS, Q_RESOURCE_CANDIDATES, build_resource_input,
+    Q_MANIFEST_TEMPLATE, M_IMPORT_MANIFEST, M_CREATE_APPLICATION, M_SET_APP_WEBHOOK,
+    M_SUBSCRIBE_RESOURCE, Q_RESOURCE_EXECUTIONS, Q_APP_NOTIFICATIONS,
+)
+
+_DOCS_SUSCRIPTOR = (
+    Q_MANIFEST_TEMPLATE, M_IMPORT_MANIFEST, M_CREATE_APPLICATION, M_SET_APP_WEBHOOK,
+    M_SUBSCRIBE_RESOURCE, Q_RESOURCE_EXECUTIONS, Q_APP_NOTIFICATIONS,
 )
 
 SCHEMA = build_schema((ROOT / "tests/fixtures/odm_schema.graphql").read_text())
@@ -45,19 +52,6 @@ def test_variables_create_resource_conformes_al_input():
     assert receta["value"].startswith("["), "la receta debe viajar como JSON string"
 
 
-def test_jerez_json_genera_inputs_validos_para_las_tres_variantes():
-    decls = json.loads((ROOT / "data/odm_resources/jerez.json").read_text())
-    assert len(decls) == 3
-    for d in decls:
-        variables = build_resource_input(
-            name=d["name"], fetcher_id="fake", preset_id="fake",
-            params=d["params"], publisher=d.get("publisher"),
-            target_table=d.get("target_table"), description=d.get("description"),
-        )
-        errs = _coerce_errors(variables["input"], "CreateResourceInput")
-        assert not errs, f"{d['name']}: {errs}"
-
-
 def test_documentos_discovery_validos_contra_el_esquema():
     for doc in (M_EXECUTE_RESOURCE, Q_RESOURCE_CANDIDATES, M_PROMOTE_CANDIDATE, M_DELETE_RESOURCE):
         errors = validate(SCHEMA, parse(doc))
@@ -70,15 +64,29 @@ def test_promote_input_conforme_al_esquema():
     assert not _coerce_errors(inp, "PromoteCandidateInput")
 
 
+def test_documentos_suscriptor_validos_contra_el_esquema():
+    for doc in _DOCS_SUSCRIPTOR:
+        errors = validate(SCHEMA, parse(doc))
+        assert not errors, f"documento de suscriptor inválido contra el esquema de ODM: {errors}"
+
+
+def test_create_application_input_conforme_al_esquema():
+    inp = {"name": "ckan-jerez", "consumptionMode": "webhook",
+           "subscribedProjects": [], "webhookUrl": "https://ckan-jerez/webhooks/odmgr"}
+    assert not _coerce_errors(inp, "CreateApplicationInput")
+
+
 if __name__ == "__main__":
     test_documentos_validos_contra_el_esquema_de_odm()
     print("[OK] Q_FETCHERS y M_CREATE_RESOURCE validan contra el esquema real de ODM")
     test_variables_create_resource_conformes_al_input()
     print("[OK] variables de createResource conformes a CreateResourceInput")
-    test_jerez_json_genera_inputs_validos_para_las_tres_variantes()
-    print("[OK] jerez.json genera inputs válidos para censo/datos/receta")
     test_documentos_discovery_validos_contra_el_esquema()
     print("[OK] discovery (executeResource, resourceCandidates, promoteCandidate, deleteResource) validan")
     test_promote_input_conforme_al_esquema()
     print("[OK] PromoteCandidateInput con variant conforme al esquema")
+    test_documentos_suscriptor_validos_contra_el_esquema()
+    print("[OK] documentos de suscriptor (manifiesto, application, suscripción, ejecuciones, entregas) validan")
+    test_create_application_input_conforme_al_esquema()
+    print("[OK] CreateApplicationInput conforme al esquema")
     print("TODO VERDE")
