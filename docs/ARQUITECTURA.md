@@ -78,12 +78,16 @@ rescata para no perderlo:
 ## 4. Integración con ODM
 
 `ckan-jerez` es el único suscriptor de ODM en el dominio de Jerez, y se relaciona
-con él por su frontera pública.
+con él por su frontera pública: **GraphQL** para definir recursos y consultar
+datos, y **webhook** para recibir las notificaciones de carga.
 
 ### 4.1. Declaración de recursos
 
-`data/odm_resources/jerez.json` declara lo que ODM debe cosechar. Cada recurso
-sigue el esquema:
+`data/odm_resources/jerez.json` declara lo que ODM debe cosechar; `ckan-jerez`
+aplica esa declaración a ODM mediante **mutaciones GraphQL**
+(`services/odm_client.py`), seleccionando el **Web Tree fetcher** —el adecuado
+para el árbol documental del portal— y configurando sus variantes (*censo*,
+*datos*, *receta*). Cada recurso sigue el esquema:
 
 ```json
 {
@@ -97,8 +101,8 @@ sigue el esquema:
 }
 ```
 
-El aprovisionamiento es idempotente: crea, actualiza o deja intacto cada recurso
-según difiera o no de lo ya declarado en ODM.
+La definición es idempotente: crea, actualiza o deja intacto cada recurso según
+difiera o no de lo ya definido en ODM.
 
 ### 4.2. Notificación por webhook (push)
 

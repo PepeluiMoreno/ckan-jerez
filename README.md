@@ -47,8 +47,12 @@ El sistema se organiza en tres capas con responsabilidades disjuntas:
   Recorre el árbol del Portal de Transparencia, extrae los documentos tabulares a
   datos y cataloga los documentos de prosa, y expone el resultado por su API.
 - **Capa de datos abiertos — `ckan-jerez`.** Es el **único suscriptor de ODM** en
-  el dominio de Jerez. Recibe los datos, los publica como catálogo CKAN y los
-  mantiene actualizados. Constituye la fuente de verdad de datos abiertos del
+  el dominio de Jerez. Habla con ODM por **GraphQL**: define en él los recursos a
+  cosechar y consume los datasets resultantes. Para el Portal de Transparencia de
+  Jerez —un árbol documental TYPO3— selecciona el **Web Tree fetcher** y configura
+  sus variantes (*censo documental*, *extracción de datos* y *extracción con
+  receta*) según el tipo de documento. Publica el resultado como catálogo CKAN y lo
+  mantiene actualizado; constituye la fuente de verdad de datos abiertos del
   municipio.
 - **Capa de explotación — consumidores.** Aplicaciones que leen el catálogo por
   los protocolos estándar de CKAN/DCAT. Entre ellas,
@@ -63,7 +67,7 @@ El sistema se organiza en tres capas con responsabilidades disjuntas:
 | `data/odm_resources/jerez.json` | Declara los recursos que ODM debe cosechar del portal de Jerez (recurso Web Tree y recetas de extracción). |
 | `api/webhooks.py` (`POST /webhooks/odmgr`) | Recibe las notificaciones de ODM. Verifica la firma **HMAC-SHA256** de la cabecera `X-ODM-Signature`. |
 | `services/odmgr_sync.py` | Procesa el payload del webhook e ingiere el dataset en la base de datos del portal. |
-| `services/odm_client.py` | Cliente de la API GraphQL de ODM para consulta bajo demanda (*pull*). |
+| `services/odm_client.py` | Cliente **GraphQL** de ODM: define los recursos (mutaciones) y consulta datasets y censo (*queries*). |
 | `services/ckan_publisher.py` | Publica y actualiza los conjuntos como *packages* CKAN. |
 | Base de datos propia (PostgreSQL) | Estado del portal y del catálogo. Independiente de la de ODM. |
 
@@ -72,8 +76,11 @@ y webhook); no comparte con él base de datos ni red.
 
 ## 4. Ciclo de vida del dato
 
-1. **Declaración.** El portal declara en `data/odm_resources/jerez.json` qué debe
-   cosechar ODM y cómo leer cada documento.
+1. **Definición de recursos.** `ckan-jerez` define en ODM, mediante **mutaciones
+   GraphQL**, los recursos del Portal de Transparencia de Jerez: selecciona el
+   **Web Tree fetcher** y configura sus variantes (*censo*, *datos*, *receta*)
+   según cada documento. La declaración local de qué definir reside en
+   `data/odm_resources/jerez.json`.
 2. **Cosecha.** ODM ejecuta la cosecha del Portal de Transparencia y normaliza el
    resultado.
 3. **Notificación.** Al completar una carga, ODM emite un webhook firmado hacia
