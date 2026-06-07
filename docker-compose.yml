@@ -1,0 +1,27 @@
+# ckan-jerez: app independiente suscrita a ODM. Red PROPIA, sin BD de ODM ni su
+# red interna. A ODM se llega por su API pública (ODM_API_URL). La BD que aparezca
+# aquí en el futuro será la del CKAN propio de Jerez, JAMÁS la de ODM.
+services:
+  ckan-jerez:
+    build:
+      context: .
+      args:
+        BUILD_SHA: ${BUILD_SHA:-dev}
+    image: ckan-jerez:local
+    container_name: ${APP_PREFIX:-ckanjerez}_worker
+    restart: "no"                         # worker; se invoca bajo demanda / por cron
+    environment:
+      ODM_API_URL: ${ODM_API_URL}         # ODM como proveedor, vía API pública
+      ODM_API_TOKEN: ${ODM_API_TOKEN:-}
+      CKAN_URL: ${CKAN_URL:-}             # (futuro) CKAN propio
+      CKAN_API_TOKEN: ${CKAN_API_TOKEN:-}
+      APP_VERSION: ${BUILD_SHA:-dev}
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true
+    command: ["help"]
+
+networks:
+  internal:                               # red PROPIA de ckan-jerez (no la de ODM)
+    name: ${APP_PREFIX:-ckanjerez}_internal

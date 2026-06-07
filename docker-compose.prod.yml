@@ -1,0 +1,5 @@
+services:
+  ckan-jerez:
+    image: ghcr.io/pepeluimoreno/ckan-jerez:latest
+# Cuando el CKAN propio tenga web, aquí se añadirán sus servicios (postgres+solr+
+# redis del CKAN, nginx/traefik) — en la red PROPIA de ckan-jerez, nunca la de ODM.

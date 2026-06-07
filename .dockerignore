@@ -1,0 +1,34 @@
+venv/
+.venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.coverage
+# secretos
+.env
+.env.*
+# git / editor / OS
+.git/
+.gitignore
+.vscode/
+.idea/
+*.swp
+.DS_Store
+# docker / compose (no van dentro de la imagen)
+.dockerignore
+docker-compose*.yml
+# docs no van a la imagen; los scripts operativos SÍ
+docs/
+*.md
+# datos de prueba
+*.pdf
+*.xlsx
+*.xls
+*.csv
+*.tsv
+*.log
+*.tmp
+*.bak
