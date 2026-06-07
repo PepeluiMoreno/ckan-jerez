@@ -56,7 +56,11 @@ createApp({
     const executions = ref([])
     const notifications = ref([])
     const fetchers = ref([])
-    const wizard = reactive({ fetcher:'', preset:'', template:null })
+    const wizard = reactive({
+      fetcher:'', preset:'', template:null, fixed:[], manifest:null, done:null,
+      form: { pub:'', publisher:{acronimo:'',nombre:'',nivel:'MUNICIPAL',pais:'España',portal_url:''},
+              name:'', schedule:'', params:[] },
+    })
     const result = ref(null)
 
     const ramPct = computed(() => ram.total ? Math.round((1 - ram.avail/ram.total)*100) : 0)
@@ -89,7 +93,36 @@ createApp({
     function doBootstrap(dry) { run(async () => { result.value = await api('/bootstrap', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dry_run:dry})}) }) }
     function refrescar(rid) { run(async () => { result.value = await api('/odm/execute', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid})}); await loaders.datos() }) }
     async function loadFetchers() { try { fetchers.value = await api('/odm/fetchers') } catch(e){ err.value=String(e.message||e) } }
-    function getTemplate() { run(async () => { wizard.template = await api('/odm/manifest-template', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fetcherCode:wizard.fetcher, presetCode:wizard.preset||null})}) }) }
+    function getTemplate() { run(async () => {
+      wizard.manifest=null; wizard.done=null
+      const t = await api('/odm/manifest-template', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fetcherCode:wizard.fetcher, presetCode:wizard.preset||null})})
+      wizard.template = t
+      wizard.fixed = (t._plantilla && t._plantilla.params_fijados_por_preset) || []
+      const tparams = ((t.resources||[])[0]||{}).params || []
+      wizard.form.params = tparams.map(p => ({key:p.key, value:p.value}))
+      if (!wizard.form.params.some(p=>p.key==='root_url')) wizard.form.params.push({key:'root_url', value:''})
+    }) }
+    function pickPub() {
+      const k = wizard.form.pub
+      if (k && catalog.publishers[k]) wizard.form.publisher = {acronimo:k, ...catalog.publishers[k]}
+      else wizard.form.publisher = {acronimo:'',nombre:'',nivel:'MUNICIPAL',pais:'España',portal_url:''}
+    }
+    function addParam() { wizard.form.params.push({key:'', value:''}) }
+    function delParam(i) { wizard.form.params.splice(i,1) }
+    function _payload(dry) {
+      const params = {}; wizard.form.params.forEach(p => { if (p.key) params[p.key]=p.value })
+      return JSON.stringify({fetcher_code:wizard.fetcher, preset_code:wizard.preset||null,
+        publisher:wizard.form.publisher, name:wizard.form.name, schedule:wizard.form.schedule,
+        params, dry_run:dry})
+    }
+    function previewSource() { run(async () => {
+      const out = await api('/sources/new', {method:'POST',headers:{'Content-Type':'application/json'},body:_payload(true)})
+      wizard.manifest = out.manifest; wizard.done=null
+    }) }
+    function createSource() { run(async () => {
+      const out = await api('/sources/new', {method:'POST',headers:{'Content-Type':'application/json'},body:_payload(false)})
+      wizard.done = out.result; wizard.manifest = out.manifest
+    }) }
 
     onMounted(() => {
       checkHealth(); loadStatus(); loadFetchers()
@@ -99,7 +132,7 @@ createApp({
 
     return { view, nav, odmStatus, appVersion, ram, ramPct, ramColor, status, err, busy,
              catalog, resources, subscriptions, executions, notifications, fetchers, wizard, presetsOf, result,
-             go, provision, doBootstrap, refrescar, getTemplate }
+             go, provision, doBootstrap, refrescar, getTemplate, pickPub, addParam, delParam, previewSource, createSource }
   },
   template: `
   <!-- Sidebar -->
@@ -178,8 +211,62 @@ createApp({
               <option value="">(ninguna)</option><option v-for="p in presetsOf" :key="p.id" :value="p.code">{{ p.code }}</option></select></label>
           <button class="btn btn-primary" :disabled="busy || !wizard.fetcher" @click="getTemplate">Obtener plantilla</button>
         </div>
-        <p class="text-xs text-gray-500 mt-2">La plantilla viene de ODM (manifestTemplate). Rellena publisher + params y se importa idempotente.</p>
-        <pre v-if="wizard.template" class="mt-3">{{ JSON.stringify(wizard.template, null, 2) }}</pre>
+        <p class="text-xs text-gray-500 mt-2">Lo fijo lo trae la variante; rellena solo los campos. El manifiesto se compone solo (puedes previsualizarlo).</p>
+
+        <div v-if="wizard.template" class="mt-4 space-y-4">
+          <div v-if="wizard.fixed.length" class="text-xs text-gray-400">
+            Fijado por la variante:
+            <span v-for="f in wizard.fixed" :key="f" class="pill bg-gray-700 text-gray-300 ml-1">🔒 {{ f }}</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <label class="text-xs text-gray-400">Publisher
+              <select v-model="wizard.form.pub" @change="pickPub" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+                <option value="">— nuevo —</option>
+                <option v-for="(v,k) in catalog.publishers" :key="k" :value="k">{{ v.nombre || k }}</option>
+              </select></label>
+            <label class="text-xs text-gray-400">Nombre del recurso
+              <input v-model="wizard.form.name" placeholder="Jerez — …" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+          </div>
+          <div v-if="!wizard.form.pub" class="grid grid-cols-4 gap-3">
+            <label class="text-xs text-gray-400">Acrónimo
+              <input v-model="wizard.form.publisher.acronimo" placeholder="AYTOJEREZ" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+            <label class="text-xs text-gray-400">Nombre
+              <input v-model="wizard.form.publisher.nombre" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+            <label class="text-xs text-gray-400">Nivel
+              <select v-model="wizard.form.publisher.nivel" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+                <option>MUNICIPAL</option><option>PROVINCIAL</option><option>AUTONOMICO</option><option>ESTATAL</option></select></label>
+            <label class="text-xs text-gray-400">Portal
+              <input v-model="wizard.form.publisher.portal_url" placeholder="https://…" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs text-gray-400">Parámetros del recurso (los de la variante vienen precargados)</span>
+              <button class="btn btn-ghost" @click="addParam">+ parámetro</button>
+            </div>
+            <div v-for="(p,i) in wizard.form.params" :key="i" class="flex gap-2 mb-1.5">
+              <input v-model="p.key" placeholder="clave" class="w-56 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+              <input v-model="p.value" placeholder="valor" class="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+              <button class="btn btn-ghost" @click="delParam(i)">✕</button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <label class="text-xs text-gray-400">Schedule (cron, opcional)
+              <input v-model="wizard.form.schedule" placeholder="0 4 1 * *" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+          </div>
+
+          <div class="flex gap-2">
+            <button class="btn btn-ghost" :disabled="busy" @click="previewSource">Previsualizar manifiesto</button>
+            <button class="btn btn-primary" :disabled="busy || !wizard.form.name" @click="createSource">Crear en ODM</button>
+          </div>
+          <div v-if="wizard.done" class="card border-green-700 bg-green-900/30 text-green-200 px-4 py-2.5 text-sm">
+            ✅ Importado: {{ JSON.stringify(wizard.done) }}
+          </div>
+          <details v-if="wizard.manifest"><summary class="text-xs text-gray-400 cursor-pointer">Ver manifiesto generado</summary>
+            <pre class="mt-2">{{ JSON.stringify(wizard.manifest, null, 2) }}</pre></details>
+        </div>
       </div>
     </div>
 

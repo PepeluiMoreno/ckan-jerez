@@ -137,6 +137,25 @@ def manifest_template(body: dict = Body(...)) -> Any:
     return _odm(lambda c: c.manifest_template(body["fetcherCode"], body.get("presetCode")))
 
 
+@router.post("/sources/new")
+def new_source(body: dict = Body(...)) -> Any:
+    """Asistente 'nueva fuente': recibe CAMPOS (no un manifiesto editado a pelo) y
+    deja que provision_source componga el manifiesto: plantilla de ODM (fetcher+
+    preset) + hechos del formulario. dry_run=true (defecto) devuelve el manifiesto
+    para previsualizar; false lo importa (idempotente)."""
+    from services.provisioning import provision_source
+    fetcher = body.get("fetcher_code")
+    name = (body.get("name") or "").strip()
+    publisher = body.get("publisher") or {}
+    if not fetcher or not name or not publisher.get("acronimo"):
+        raise HTTPException(status_code=400, detail="faltan fetcher_code, name o publisher.acronimo")
+    return _odm(lambda c: provision_source(
+        c, fetcher_code=fetcher, preset_code=body.get("preset_code") or None,
+        publisher=publisher, name=name, params=body.get("params") or {},
+        schedule=(body.get("schedule") or "").strip() or None,
+        dry_run=bool(body.get("dry_run", True))))
+
+
 @router.post("/sources/provision")
 def provision(body: dict = Body(default={})) -> Any:
     from services.provisioning import provision_catalog
