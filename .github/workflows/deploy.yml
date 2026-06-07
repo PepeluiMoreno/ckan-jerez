@@ -63,8 +63,12 @@ jobs:
           script: |
             APP_DIR=/opt/docker/apps/ckan-jerez
             if [ ! -d "$APP_DIR/.git" ]; then
+              if ! ( mkdir -p "$APP_DIR" 2>/dev/null && [ -w "$APP_DIR" ] ); then
+                APP_DIR="$HOME/ckan-jerez"
+                echo "[bootstrap] /opt/docker/apps no escribible; uso $APP_DIR"
+                mkdir -p "$APP_DIR"
+              fi
               echo "[bootstrap] primer despliegue: clonando el repo en $APP_DIR"
-              mkdir -p "$APP_DIR"
               git clone https://github.com/PepeluiMoreno/ckan-jerez.git "$APP_DIR"
             fi
             cd "$APP_DIR"
