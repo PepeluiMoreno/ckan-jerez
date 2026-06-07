@@ -68,11 +68,20 @@ jobs:
             printf '%s\n' "$CKANJEREZ_ENV_PRODUCTION" > .env.production
             COMPOSE="docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml"
             $COMPOSE pull
-            # ckan-jerez es un worker subscriptor: no hay servicio web que sondear.
-            # El "health" es el smoke — que ODM responde por su API (sin tocar su BD).
-            echo "[smoke] verificando suscripción a ODM vía API..."
-            if ! $COMPOSE run --rm ckan-jerez smoke; then
-              echo "[smoke] FALLO: ODM no responde por su API. Workflow en ROJO."
+            # Arranca/actualiza el servicio web (uvicorn): sirve panel /, API /api,
+            # webhook /webhooks/odmgr y /health. (Antes solo corría un smoke de worker
+            # y NUNCA se levantaba el servidor -> Traefik 503 sin backend.)
+            $COMPOSE up -d ckan-jerez
+            echo "[health] esperando a que ckan-jerez responda /health..."
+            ok=0
+            for i in $(seq 1 30); do
+              if $COMPOSE exec -T ckan-jerez curl -fsS -m 5 http://localhost:8000/health >/dev/null 2>&1; then ok=1; break; fi
+              sleep 3
+            done
+            if [ "$ok" != 1 ]; then
+              echo "[health] FALLO: /health no responde. Últimos logs:"
+              $COMPOSE logs --tail=60 ckan-jerez || true
               exit 1
             fi
+            echo "[health] OK — ckan-jerez sirviendo"
             docker image prune -f
