@@ -1,195 +1,119 @@
-# ckan-jerez
+# Datos Abiertos de Jerez
 
-> **Datos abiertos del Portal de Transparencia de Jerez de la Frontera**,
-> cosechados por [OpenDataManager (ODM)](https://github.com/PepeluiMoreno/OpenDataManager)
-> y servidos —a futuro— como un CKAN.
+Portal de datos abiertos del municipio de Jerez de la Frontera. Transforma la
+información económico-financiera que el Ayuntamiento publica en su Portal de
+Transparencia en un catálogo **CKAN** normalizado: navegable, descargable,
+consultable por API e interoperable mediante DCAT.
 
-`ckan-jerez` es una **app independiente suscrita a ODM**. No es parte de ODM, no
-comparte su base de datos ni su red: se relaciona con él **solo a través de su
-API pública**. ODM hace el trabajo pesado (descubrir, inferir, extraer); este
-repositorio aporta el **conocimiento del portal de Jerez** y, con los datasets que
-ODM produce, construye y mantiene el CKAN.
+> Iniciativa ciudadana independiente. Reutiliza información de publicación
+> obligatoria; no constituye una fuente oficial del Ayuntamiento.
 
----
+## 1. Contexto y motivación
 
-## La idea en una frase
+El Portal de Transparencia de Jerez está implementado sobre **TYPO3** como un
+árbol de carpetas y documentos. En términos de reutilización, equivale a un gran
+**panel de corcho con varios miles de documentos prendidos** —hojas de cálculo,
+CSV e informes en PDF— organizados por su ubicación de publicación y no por su
+contenido.
 
-> **ODM es el motor. ckan-jerez es un suscriptor.**
-> El cliente le dice a ODM *qué* portal mirar y *cómo* leer cada documento, y
-> luego *consume* el resultado. Nada más.
+Esta forma de publicación satisface el requisito legal de *acceso*, pero no el de
+*reutilización*: un documento puede leerse, pero el conjunto no puede consultarse,
+compararse ni agregarse sin un trabajo manual de descarga y transcripción. El
+presente portal resuelve esa carencia convirtiendo el árbol documental en datos
+estructurados y estándar, en los que cada magnitud es un registro y cada serie
+conserva su histórico anual.
 
----
+## 2. Arquitectura
 
-## Arquitectura
+El sistema se organiza en tres capas con responsabilidades disjuntas:
 
 ```
-        Portal de Transparencia de Jerez  (TYPO3, /fileadmin/…)
-                          │
-                          │  (1) ckan-jerez registra el recurso Web Tree
-                          │      de Jerez en ODM  ──vía API──►
-                          ▼
-   ┌─────────────────────────────────────────────────────────────┐
-   │                     OpenDataManager (motor)                   │
-   │                                                               │
-   │   Web Tree fetcher ─► inferer ─► variantes por recurso        │
-   │        (crawl)        (agrupa)   Censo · Datos · Receta        │
-   │                                        │                      │
-   │                                  datasets + censo             │
-   └─────────────────────────────────────────────────────────────┘
-                          │
-                          │  (2) ckan-jerez consume datasets/censo ◄──vía API──
-                          ▼
-                   ckan-jerez  (red y BD PROPIAS)
-                          │
-                          ▼
-                   CKAN de Jerez  (futuro)
+   Portal de Transparencia de Jerez  (TYPO3 — árbol documental)
+                    │
+                    ▼
+   OpenDataManager (ODM)        Capa de cosecha y extracción
+                    │           (descubre, extrae, normaliza)
+                    │  API GraphQL + webhook (HMAC-SHA256)
+                    ▼
+   ckan-jerez (este portal)     Capa de datos abiertos
+                    │           (suscribe a ODM y publica el CKAN)
+                    │  API CKAN + DCAT
+                    ▼
+   Consumidores                 Capa de explotación
+   p. ej. CityDashboard         (cuadros de mando, análisis, terceros)
 ```
 
-La frontera es **la API de ODM**. ckan-jerez nunca abre la BD de ODM ni entra en
-su red interna: la BD que algún día aparezca aquí será la del **CKAN propio**.
+- **Capa de cosecha — [OpenDataManager](https://github.com/PepeluiMoreno/OpenDataManager).**
+  Recorre el árbol del Portal de Transparencia, extrae los documentos tabulares a
+  datos y cataloga los documentos de prosa, y expone el resultado por su API.
+- **Capa de datos abiertos — `ckan-jerez`.** Es el **único suscriptor de ODM** en
+  el dominio de Jerez. Recibe los datos, los publica como catálogo CKAN y los
+  mantiene actualizados. Constituye la fuente de verdad de datos abiertos del
+  municipio.
+- **Capa de explotación — consumidores.** Aplicaciones que leen el catálogo por
+  los protocolos estándar de CKAN/DCAT. Entre ellas,
+  [**CityDashboard**](https://github.com/PepeluiMoreno/cityDashboard), un panel de
+  control municipal con semáforos de cumplimiento legal (LOEPSF, Ley 15/2010), que
+  consume **este portal**.
 
----
+## 3. Componentes
 
-## El Web Tree fetcher y sus variantes
-
-El corazón de todo. El **Web Tree fetcher** de ODM recorre el árbol de carpetas
-de un portal (no una API: el propio sistema de ficheros publicado), descubre las
-**hojas** (documentos) y deja que el **inferer** las agrupe en *propuestas*:
-
-- **serie** — ficheros con un patrón regular (`…/{año}/{mes}/informe.xlsx`), que
-  se tratan como una sola colección con dimensiones (año, mes…).
-- **bundle** — un montón de ficheros heterogéneos y de nombres irregulares que no
-  forman serie limpia; se agrupan *lógicamente* (no es un ZIP: son N ficheros).
-
-Cada recurso promovido lleva una **variante** (preset) que decide *cómo* se lee:
-
-| Variante | `extract_mode` | Qué hace | Cuándo se usa | Ejemplo en Jerez |
-|---|---|---|---|---|
-| **Censo documental** | `censo` | Registra cada hoja (sección, URL, nombre, formato). **No extrae**: cataloga. | Prosa y ficheros opacos | Resoluciones, decretos, certificados |
-| **Extracción de datos** | `datos` | Descarga y **parsea a filas** (xlsx/xls/csv/tsv y tablas PDF). | Ficheros tabulares | Ejecución de gastos, contratos menores |
-| **Extracción con receta** | `receta` | Aplica una **receta**: captura *valores concretos* de un documento semiestructurado. | Informes-formulario (el dato son celdas, no una tabla entera) | PMP, remanente de tesorería, resultado presupuestario |
-
-La doctrina que las gobierna: **todo lo que no sea prosa debe acabar como dato.**
-La prosa (un PDF narrativo) cae sola al *Censo* porque, al intentar extraerlo,
-devuelve 0 filas (guarda anti-prosa). Lo tabular —por formato o por receta— debe
-ser *dataset*.
-
-### Recetas: capturar el dato exacto
-
-Una receta busca un rótulo y toma el valor por **posición** dentro de la rejilla:
-
-| `posicion` | Toma… |
+| Componente | Responsabilidad |
 |---|---|
-| `celda` | el resto de la propia celda del rótulo |
-| `derecha` | el **primer** número a la derecha |
-| `debajo` | el primer número de la fila siguiente |
-| `ultima` | el **último** número de la fila (la última columna) |
+| `data/odm_resources/jerez.json` | Declara los recursos que ODM debe cosechar del portal de Jerez (recurso Web Tree y recetas de extracción). |
+| `api/webhooks.py` (`POST /webhooks/odmgr`) | Recibe las notificaciones de ODM. Verifica la firma **HMAC-SHA256** de la cabecera `X-ODM-Signature`. |
+| `services/odmgr_sync.py` | Procesa el payload del webhook e ingiere el dataset en la base de datos del portal. |
+| `services/odm_client.py` | Cliente de la API GraphQL de ODM para consulta bajo demanda (*pull*). |
+| `services/ckan_publisher.py` | Publica y actualiza los conjuntos como *packages* CKAN. |
+| Base de datos propia (PostgreSQL) | Estado del portal y del catálogo. Independiente de la de ODM. |
 
-Ejemplo real (resultado presupuestario): el valor ajustado vive en la **última
-columna** de una megacelda, tras derechos y obligaciones. `derecha` pescaría el
-primero (232.468.641,11); `ultima` da el correcto: **6.288.438,43**.
+`ckan-jerez` se relaciona con ODM exclusivamente por su **frontera pública** (API
+y webhook); no comparte con él base de datos ni red.
 
-### Carve-outs: rescatar lo que el inferer entierra
+## 4. Ciclo de vida del dato
 
-A veces el dato queda sepultado dentro de un *bundle* mixto. Dos rescates:
+1. **Declaración.** El portal declara en `data/odm_resources/jerez.json` qué debe
+   cosechar ODM y cómo leer cada documento.
+2. **Cosecha.** ODM ejecuta la cosecha del Portal de Transparencia y normaliza el
+   resultado.
+3. **Notificación.** Al completar una carga, ODM emite un webhook firmado hacia
+   `POST /webhooks/odmgr`.
+4. **Ingesta.** `services/odmgr_sync.py` valida la firma e incorpora el dataset.
+5. **Publicación.** `services/ckan_publisher.py` crea o actualiza el *package*
+   CKAN correspondiente.
+6. **Refresco.** El ciclo se repite de forma periódica; los históricos se
+   conservan por año, permitiendo el seguimiento temporal de cada indicador.
 
-- **Tabular (capacidad genérica de ODM):** las hojas xlsx/csv/tsv enterradas en un
-  bundle de prosa se re-agrupan en series propias y se promueven como **datos**.
-- **PDF-receta (config de Jerez):** estados como *remanente* o *resultado* van
-  dentro del bundle de liquidación; se les da serie propia para que su receta
-  enganche.
+Adicionalmente, `services/odm_client.py` permite la consulta directa por GraphQL
+cuando se requiere un *pull* explícito en lugar de esperar la notificación.
 
----
+## 5. Acceso y reutilización
 
-## Cómo se relaciona con ODM (suscripción)
+El catálogo se expone por los mecanismos estándar de CKAN:
 
-ckan-jerez habla con ODM **solo por su API**:
+- **Web del portal**: navegación y descarga de recursos (CSV, XLSX).
+- **API CKAN**: consulta programática de conjuntos y recursos.
+- **DCAT**: cosecha del catálogo completo, interoperable con datos.gob.es y el
+  portal europeo de datos.
 
-1. **Registra** el recurso Web Tree de Jerez (su `ROOT`, las carpetas a extraer,
-   el catálogo de recetas y los carve-outs) mediante las mutaciones de ODM.
-2. **Consume** los datasets y el censo resultantes para construir el CKAN.
+Casos de uso: transparencia y rendición de cuentas, periodismo de datos, análisis
+ciudadano y reutilización por aplicaciones de terceros.
 
-> **Estado actual (honesto):** el crawler heredado `scripts/jerez_webtree.py` aún
-> hace esto por **import directo de `app.*` + escritura en la BD de ODM** — el
-> acoplamiento que esta arquitectura elimina. Su migración a cliente-API es el
-> **siguiente paso** y está en lo alto del backlog. La imagen Docker de este repo
-> ya está construida para el modelo suscriptor (independiente, sin BD/red de ODM).
+## 6. Despliegue
 
----
+El portal se distribuye como imagen de contenedor en **GHCR**
+(`ghcr.io/pepeluimoreno/ckan-jerez`) y se despliega mediante **GitHub Actions**:
+cada publicación en `main` construye la imagen, la sube al registro y la despliega
+en el servidor, validando su salud (`/health`) antes de dar por bueno el
+despliegue.
 
-## Doctrina motor / cliente
+## 7. Documentación técnica
 
-> ¿**Verdad universal sobre árboles de documentos web**? → ODM (motor).
-> ¿**Hecho del portal de Jerez**? → este repo (cliente).
+El detalle de la cosecha —el *Web Tree fetcher* de ODM y sus variantes de
+extracción (censo documental, extracción de datos y extracción con receta), la
+gramática de recetas y el protocolo de webhook— se documenta en
+[`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md).
 
-- **Motor (ODM):** Web Tree fetcher, inferer, anti-prosa, motor de recetas,
-  `carve_tabular_series`, lectores de formato.
-- **Cliente (aquí):** `ROOT`/`EXTRAER`/`RECETAS`, carve-outs por nombre de
-  fichero, y el mapeo a CKAN.
+## Licencia
 
----
-
-## El gate: nada de CKAN antes de tiempo
-
-El CKAN **no nace** hasta que todo lo que no sea prosa se consiga presentar como
-datos abiertos. El catálogo del CKAN serán los PDF de prosa no extraíbles; todo lo
-tabular (por formato o por receta) debe ser dataset antes.
-
-| Pieza del gate | Estado |
-|---|---|
-| Tabular por formato (xlsx/csv/tsv) | ✅ (carve genérico) |
-| Recetas (PMP / remanente / resultado) | ✅ validadas en vivo |
-| Series-receta resilientes a ficheros malos | ✅ |
-| Ficheros > 4 MB | ✅ (límite por defecto 50 MB) |
-| Morosidad vía XLSX gemelo | ⏳ validar contenido |
-| Cobertura de formatos del WebTree (zip/docx/ods) | ⏳ en ODM |
-
----
-
-## Entorno dockerizado
-
-App **independiente**: imagen propia (no construida sobre ODM), red propia, sin
-BD de ODM. Es un **worker** (no un servicio web), invocable bajo demanda o por
-cron del host:
-
-```bash
-docker compose run --rm ckan-jerez smoke       # ¿responde ODM por su API?
-docker compose run --rm ckan-jerez subscribe   # (pendiente) registra el recurso en ODM
-docker compose run --rm ckan-jerez publish      # (pendiente) actualiza el CKAN
-docker compose run --rm ckan-jerez shell
-```
-
-Configuración (`.env.production`, ver `.env.production.example`): `ODM_API_URL`,
-`ODM_API_TOKEN`, y —a futuro— `CKAN_URL`/`CKAN_API_TOKEN`.
-
----
-
-## Despliegue (GitHub Actions + GHCR)
-
-Como el resto de las apps: `push` a `main` → **build** y push de la imagen a
-`ghcr.io/pepeluimoreno/ckan-jerez` → **deploy** por SSH (`pull` + smoke). No hay
-healthcheck web porque no es un servicio: el *health* es el **smoke** —que ODM
-responde por su API—, coherente con un worker suscriptor.
-
-Secretos: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_KEY`, `CKANJEREZ_ENV_PRODUCTION`.
-
----
-
-## Estructura
-
-```
-ckan-jerez/
-├── Dockerfile                 # imagen independiente (FROM python:3.11-slim)
-├── docker-compose.yml         # worker; red propia; ODM por API
-├── docker-compose.prod.yml    # imagen de GHCR
-├── docker/entrypoint.sh       # smoke (API de ODM) + comandos del worker
-├── .github/workflows/deploy.yml
-├── .env.production.example
-├── scripts/                   # cliente Jerez (crawler heredado, auditoría, retirada)
-└── docs/                      # AUDITORIA + BACKLOG
-```
-
-## Backlog
-
-Ver [`docs/BACKLOG.md`](docs/BACKLOG.md): migración a cliente-API de ODM
-(crítico), exportador CKAN, validación de los XLSX de morosidad, cierre del gate.
+Datos bajo licencia abierta con atribución. Código bajo licencia libre.
