@@ -8,6 +8,9 @@ Convención: `[ ]` pendiente · `[x]` hecho · `[-]` descartado.
 
 ## Pendiente
 
+- [ ] **Bootstrap del suscriptor**: registrar la Application de ckan-jerez en ODM (`create_application` + `set_application_webhook`) y suscribir los recursos (`subscribe_resource`) — atar el provisioning con el webhook.
+- [ ] **Páginas de operador** (HTML sobre el FastAPI): Fuentes (asistente nueva-fuente), Suscripciones, Datos/Refresco, Entregas.
+- [ ] Retirar el crawler heredado (`scripts/jerez_webtree.py`) ahora que la definición va por manifiesto y la ingesta por webhook.
 - [ ] **Orquestar el ciclo completo desde ckan-jerez**: crear el crawler →
   `discover` → revisar candidatos → `promote_candidate` aplicando la *política de
   variantes* de Jerez (prosa→censo, tabular→datos, informe-formulario→receta) →
@@ -33,6 +36,13 @@ Convención: `[ ]` pendiente · `[x]` hecho · `[-]` descartado.
 
 ## Hecho
 
+- [x] **Salida homogénea (REST-apificador)**: `services/ckan_publisher.py` mapea
+  cualquier dataset de ODM a un *package* CKAN con metadatos DCAT (distribuciones
+  con formato/mimetype, publisher como owner_org, extras de versión/origen) y lo
+  hace upsert idempotente (sinks `HttpCkanSink` vía Action API y `MemorySink`).
+  `services/odmgr_sync.py`: `verify_hmac` (HMAC-SHA256) + `handle_notification`
+  genérico. `api/webhooks.py` (POST /webhooks/odmgr) y `app/main.py` (FastAPI con
+  /health). Imagen pasada de worker a servidor web (uvicorn). 23 tests verdes.
 - [x] **`odm_client` extendido**: manifiestos (`manifest_template`, `import_manifest`),
   identidad/suscripción (`create_application`, `set_application_webhook`,
   `subscribe_resource`) y observabilidad (`resource_executions`,

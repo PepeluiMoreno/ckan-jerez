@@ -1,7 +1,7 @@
 # ckan-jerez es una app INDEPENDIENTE suscrita a ODM: consume su API pública.
 # NO importa el motor de ODM ni comparte su BD/red. Deps propias del cliente:
 requests>=2.31,<3.0
-# (futuro) cliente GraphQL para registrar el recurso Web Tree de Jerez en ODM:
-# gql[requests]>=3.5,<4.0
-# (futuro) exportador del CKAN propio de Jerez:
-# ckanapi>=4.7,<5.0
+# App web: recibe el webhook de ODM y sirve /health.
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.29,<1.0
+# El CKAN propio se publica por su Action API (vía requests); sin deps extra.

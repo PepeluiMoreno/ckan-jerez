@@ -8,19 +8,29 @@ services:
       args:
         BUILD_SHA: ${BUILD_SHA:-dev}
     image: ckan-jerez:local
-    container_name: ${APP_PREFIX:-ckanjerez}_worker
-    restart: "no"                         # worker; se invoca bajo demanda / por cron
+    container_name: ${APP_PREFIX:-ckanjerez}_web
+    restart: unless-stopped
     environment:
-      ODM_API_URL: ${ODM_API_URL}         # ODM como proveedor, vía API pública
-      ODM_API_TOKEN: ${ODM_API_TOKEN:-}
-      CKAN_URL: ${CKAN_URL:-}             # (futuro) CKAN propio
+      ODM_API_URL: ${ODM_API_URL}              # ODM como proveedor, vía API pública
+      ODM_USER: ${ODM_USER:-}                  # cuenta de servicio (mínimo privilegio)
+      ODM_PASSWORD: ${ODM_PASSWORD:-}
+      ODM_WEBHOOK_SECRET: ${ODM_WEBHOOK_SECRET:-}   # verifica el HMAC del webhook
+      CKAN_URL: ${CKAN_URL:-}                  # CKAN propio (salida homogénea)
       CKAN_API_TOKEN: ${CKAN_API_TOKEN:-}
       APP_VERSION: ${BUILD_SHA:-dev}
+      PORT: ${PORT:-8000}
+    ports:
+      - "${PORT:-8000}:8000"
     networks:
       - internal
     security_opt:
       - no-new-privileges:true
-    command: ["help"]
+    command: ["serve"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 networks:
   internal:                               # red PROPIA de ckan-jerez (no la de ODM)
