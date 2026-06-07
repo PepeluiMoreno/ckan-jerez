@@ -108,6 +108,22 @@ Q_APP_NOTIFICATIONS = (
     "}"
 )
 
+Q_APPLICATIONS = (
+    "query Apps { applications { id name webhookUrl consumptionMode active } }"
+)
+Q_RESOURCES = (
+    "query Recursos($activeOnly: Boolean!) {"
+    "  resources(activeOnly: $activeOnly) { id name publisher publisherId }"
+    "}"
+)
+Q_DATASET_SUBSCRIPTIONS = (
+    "query Subs($appId: String, $resourceId: String) {"
+    "  datasetSubscriptions(applicationId: $appId, resourceId: $resourceId) {"
+    "    id applicationId resourceId autoUpgrade pinnedVersion currentVersion"
+    "  }"
+    "}"
+)
+
 _AUTH_HINTS = ("permis", "autoriz", "autenticad", "no autenticado", "sesión",
                "sesion", "forbidden", "unauthorized", "login")
 
@@ -315,3 +331,18 @@ class OdmClient:
     def application_notifications(self, application_id: Optional[str] = None) -> list[dict]:
         """Auditoría de entregas de webhook a esta Application (sentAt, statusCode, error)."""
         return self.execute(Q_APP_NOTIFICATIONS, {"applicationId": application_id})["applicationNotifications"]
+
+    # ── Resolución (para el bootstrap del suscriptor) ─────────────────────────
+    def applications(self) -> list[dict]:
+        """Lista las Applications (para encontrar la de este suscriptor por nombre)."""
+        return self.execute(Q_APPLICATIONS)["applications"]
+
+    def resources(self, active_only: bool = False) -> list[dict]:
+        """Lista recursos (id, name, publisher) para resolver IDs por nombre."""
+        return self.execute(Q_RESOURCES, {"activeOnly": active_only})["resources"]
+
+    def dataset_subscriptions(self, application_id: Optional[str] = None,
+                              resource_id: Optional[str] = None) -> list[dict]:
+        """Lista suscripciones (para no resuscribir lo ya suscrito)."""
+        return self.execute(Q_DATASET_SUBSCRIPTIONS,
+                            {"appId": application_id, "resourceId": resource_id})["datasetSubscriptions"]

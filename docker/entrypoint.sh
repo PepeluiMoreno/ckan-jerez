@@ -18,14 +18,17 @@ case "$CMD" in
     exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"
     ;;
   smoke) smoke ;;
+  bootstrap) shift; exec python -m app.bootstrap_cli "$@" ;;
   shell) exec /bin/bash ;;
   help|*)
     cat <<EOF
 ckan-jerez — homogeneizador/REST-apificador suscrito a OpenDataManager (Jerez).
 Uso:  docker compose run --rm ckan-jerez <comando>
-  serve   (defecto) sirve el webhook de ODM y /health (uvicorn)
-  smoke   verifica que ODM responde por su API pública (ODM_API_URL)
-  shell   shell interactiva
+  serve            (defecto) sirve el webhook de ODM y /health (uvicorn)
+  bootstrap        previsualiza el alta (dry-run); con --apply aprovisiona,
+                   registra Application+webhook y suscribe recursos en ODM
+  smoke            verifica que ODM responde por su API pública (ODM_API_URL)
+  shell            shell interactiva
 EOF
     ;;
 esac

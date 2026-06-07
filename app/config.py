@@ -11,6 +11,12 @@ class Settings:
         self.odm_webhook_secret = os.getenv("ODM_WEBHOOK_SECRET", "")
         self.ckan_url = os.getenv("CKAN_URL", "")
         self.ckan_api_token = os.getenv("CKAN_API_TOKEN", "")
+        self.public_base_url = os.getenv("PUBLIC_BASE_URL", "")
+
+    @property
+    def webhook_url(self) -> str:
+        """URL pública del receptor de webhook (la que se registra en ODM)."""
+        return f"{self.public_base_url.rstrip('/')}/webhooks/odmgr" if self.public_base_url else ""
 
     @property
     def ckan_configured(self) -> bool:

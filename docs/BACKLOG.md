@@ -8,7 +8,6 @@ Convención: `[ ]` pendiente · `[x]` hecho · `[-]` descartado.
 
 ## Pendiente
 
-- [ ] **Bootstrap del suscriptor**: registrar la Application de ckan-jerez en ODM (`create_application` + `set_application_webhook`) y suscribir los recursos (`subscribe_resource`) — atar el provisioning con el webhook.
 - [ ] **Páginas de operador** (HTML sobre el FastAPI): Fuentes (asistente nueva-fuente), Suscripciones, Datos/Refresco, Entregas.
 - [ ] Retirar el crawler heredado (`scripts/jerez_webtree.py`) ahora que la definición va por manifiesto y la ingesta por webhook.
 - [ ] **Orquestar el ciclo completo desde ckan-jerez**: crear el crawler →
@@ -36,6 +35,7 @@ Convención: `[ ]` pendiente · `[x]` hecho · `[-]` descartado.
 
 ## Hecho
 
+- [x] **Bootstrap del suscriptor** (`services/bootstrap.py` + `app/bootstrap_cli.py`): cierra el lazo entrada↔salida — aprovisiona el catálogo, asegura la Application (find-or-create) y su webhook (`set_application_webhook`), resuelve IDs por (publisher, name) y suscribe los recursos que falten (`subscribe_resource`), todo idempotente. Comando `bootstrap [--apply]` (dry-run por defecto). Cliente ampliado con `applications`/`resources`/`dataset_subscriptions`. 28 tests verdes.
 - [x] **Salida homogénea (REST-apificador)**: `services/ckan_publisher.py` mapea
   cualquier dataset de ODM a un *package* CKAN con metadatos DCAT (distribuciones
   con formato/mimetype, publisher como owner_org, extras de versión/origen) y lo
