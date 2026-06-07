@@ -119,3 +119,23 @@ def test_bootstrap_completo_cierra_el_lazo():
 if __name__ == "__main__":
     import pytest as _pytest
     raise SystemExit(_pytest.main([__file__, "-q"]))
+
+
+def test_adopcion_suscribe_recursos_heredados_del_publisher():
+    catalogo = {
+        "publishers": {"AJFRA": {"nombre": "Ayuntamiento de Jerez de la Frontera"}},
+        "subscribe_publishers": ["AJFRA"],
+        "sources": [
+            {"name": "Jerez — PMP mensual (receta)", "publisher": "AJFRA",
+             "fetcher": "Web Tree", "preset": "Extracción con receta", "params": {}},
+        ],
+    }
+    recursos = [
+        {"id": "r1", "name": "Jerez — PMP mensual (receta)", "publisher": "Ayuntamiento de Jerez de la Frontera"},
+        {"id": "r2", "name": "Jerez — Deuda anual (heredado)", "publisher": "AJFRA"},       # por acrónimo
+        {"id": "r3", "name": "Otro publisher", "publisher": "DIPUCADIZ"},
+    ]
+    cli = _FakeClient(resources=recursos)
+    ids = resolve_resource_ids(cli, catalogo)
+    assert ids == {"Jerez — PMP mensual (receta)": "r1",
+                   "Jerez — Deuda anual (heredado)": "r2"}      # adopta heredado, ignora ajeno

@@ -200,6 +200,11 @@ createApp({
             <td class="text-gray-200">{{ s.name }}</td><td>{{ (catalog.publishers[s.publisher]||{}).nombre || s.publisher }}</td>
             <td><span class="pill bg-gray-700 text-gray-200">{{ s.fetcher }}</span></td><td class="text-gray-400">{{ s.preset || '—' }}</td>
             <td><span class="pill" :style="enOdm(s.name) ? 'background:#064e3b;color:#34d399' : 'background:#78350f;color:#fbbf24'">{{ enOdm(s.name) ? 'en ODM' : 'pendiente' }}</span></td>
+          </tr>
+          <tr v-for="r in resources.filter(r => !catalog.sources.some(s => s.name === r.name) && (catalog.subscribe_publishers||[]).some(a => r.publisher === a || r.publisher === ((catalog.publishers[a]||{}).nombre)))" :key="r.id">
+            <td class="text-gray-300" :title="r.id">{{ r.name }}</td><td>{{ r.publisher }}</td>
+            <td class="text-gray-500" colspan="2">heredado (en ODM, no declarado)</td>
+            <td><span class="pill" style="background:#1e3a8a;color:#93c5fd">adoptado</span></td>
           </tr></tbody></table>
       </div>
       <div class="card p-5">

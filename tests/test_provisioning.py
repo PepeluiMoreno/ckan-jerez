@@ -82,7 +82,7 @@ def test_jerez_json_compila_a_manifiesto_por_publisher():
     assert len(manifests) == 1
     m = manifests[0]
     assert m["odm_manifest_version"] == 1
-    assert m["publisher"]["acronimo"] == "AYTOJEREZ"
+    assert m["publisher"]["acronimo"] == "AJFRA"
     assert len(m["resources"]) == 3
     for r in m["resources"]:
         assert r["fetcher"] == "Web Tree" and isinstance(r["params"], list)

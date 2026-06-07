@@ -1,6 +1,6 @@
 {
   "publishers": {
-    "AYTOJEREZ": {
+    "AJFRA": {
       "nombre": "Ayuntamiento de Jerez de la Frontera",
       "nivel": "MUNICIPAL",
       "pais": "España",
@@ -10,7 +10,7 @@
   "sources": [
     {
       "name": "Jerez — Portal de Transparencia (censo documental)",
-      "publisher": "AYTOJEREZ",
+      "publisher": "AJFRA",
       "fetcher": "Web Tree",
       "preset": "Censo documental",
       "description": "Inventario del árbol documental del Portal de Transparencia: una fila por documento (sección, URL, nombre, formato), sin extraer.",
@@ -21,7 +21,7 @@
     },
     {
       "name": "Jerez — Ejecución del gasto (datos)",
-      "publisher": "AYTOJEREZ",
+      "publisher": "AJFRA",
       "fetcher": "Web Tree",
       "preset": "Extracción de datos",
       "description": "Series tabulares de ejecución presupuestaria del gasto, parseadas a filas.",
@@ -32,7 +32,7 @@
     },
     {
       "name": "Jerez — PMP mensual (receta)",
-      "publisher": "AYTOJEREZ",
+      "publisher": "AJFRA",
       "fetcher": "Web Tree",
       "preset": "Extracción con receta",
       "description": "Periodo medio de pago a proveedores: una fila por informe mensual, capturada por receta.",
@@ -40,10 +40,18 @@
         "root_url": "https://transparencia.jerez.es/infopublica/economica",
         "path_prefix": "c-deuda",
         "receta": [
-          { "campo": "periodo_medio_pago_global", "etiqueta": "Periodo Medio de Pago Global", "tipo": "numero", "posicion": "derecha" }
+          {
+            "campo": "periodo_medio_pago_global",
+            "etiqueta": "Periodo Medio de Pago Global",
+            "tipo": "numero",
+            "posicion": "derecha"
+          }
         ]
       }
     }
   ],
-  "_nota": "Catálogo HETEROGÉNEO en dos ejes: varios PUBLISHERS (además de AYTOJEREZ caben Diputación de Cádiz, Junta de Andalucía, BDNS/PLACSP filtrados para Jerez…) y varios FETCHERS (Web Tree, API REST, File Download, Feeds ATOM/RSS…). Cada fuente referencia su publisher por acrónimo y declara su fetcher+preset+params. Se compila a un manifiesto por publisher."
+  "_nota": "Catálogo heterogéneo (varios publishers y fetchers posibles). El publisher del Ayuntamiento es AJFRA: el MISMO que ya existe en ODM (adopción, no duplicación). 'subscribe_publishers' hace que ckan-mgr se suscriba a TODOS los recursos de esos publishers en ODM (también los heredados, aunque no estén declarados aquí); lo declarado en 'sources' es además aprovisionado/actualizado por manifiesto.",
+  "subscribe_publishers": [
+    "AJFRA"
+  ]
 }

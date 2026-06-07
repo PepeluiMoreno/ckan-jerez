@@ -27,8 +27,12 @@ def ensure_application(client: OdmClient, *, name: str, webhook_url: Optional[st
 
 
 def resolve_resource_ids(client: OdmClient, catalog: dict) -> dict:
-    """Mapea {nombre de fuente → resourceId} casando por (publisher, name) y, en
-    su defecto, por name. Requiere que los recursos ya estén aprovisionados."""
+    """Mapea {nombre → resourceId} con DOS orígenes:
+    1. Lo declarado en el catálogo, casando por (publisher, name) y, en su
+       defecto, por name (requiere recursos ya aprovisionados).
+    2. ADOPCIÓN: todos los recursos de ODM cuyos publisher figure en
+       `subscribe_publishers` (acrónimo o nombre), estén o no declarados —
+       así los recursos heredados quedan suscritos sin redeclararlos."""
     publishers = catalog.get("publishers") or {}
     recursos = client.resources()
     by_pub_name = {(r.get("publisher"), r.get("name")): r["id"] for r in recursos}
@@ -42,6 +46,17 @@ def resolve_resource_ids(client: OdmClient, catalog: dict) -> dict:
         rid = by_pub_name.get((pub_nombre, s["name"])) or by_name.get(s["name"])
         if rid:
             ids[s["name"]] = rid
+
+    adoptar = set(catalog.get("subscribe_publishers") or [])
+    if adoptar:
+        alias = set(adoptar)
+        for acro in adoptar:                       # acrónimo y nombre valen
+            nombre = (publishers.get(acro) or {}).get("nombre")
+            if nombre:
+                alias.add(nombre)
+        for r in recursos:
+            if r.get("publisher") in alias and r.get("name") not in ids:
+                ids[r["name"]] = r["id"]
     return ids
 
 
