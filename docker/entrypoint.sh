@@ -14,21 +14,6 @@ smoke() {
 
 case "$CMD" in
   serve)
-    if [ "${AUTO_BOOTSTRAP:-1}" = "1" ]; then
-      (
-        # Espera a que el propio servidor y ODM estén accesibles y converge la
-        # suscripción (idempotente). No es fatal: si ODM no está, se reintenta
-        # en el siguiente arranque o a mano desde la consola.
-        sleep 8
-        for i in 1 2 3; do
-          echo "[auto-bootstrap] intento $i..."
-          if python -m app.bootstrap_cli --apply; then
-            echo "[auto-bootstrap] OK — consola a tono"; break
-          fi
-          sleep 30
-        done
-      ) &
-    fi
     echo "[serve] ckan-jerez en :${PORT:-8000} — webhook POST /webhooks/odmgr, /health"
     exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"
     ;;

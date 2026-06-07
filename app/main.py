@@ -23,6 +23,15 @@ app.include_router(webhooks_router)
 app.include_router(admin_router)
 
 
+@app.on_event("startup")
+def _arrancar_sync() -> None:
+    """Sincronización continua con ODM (idempotente). AUTO_BOOTSTRAP=0 la apaga."""
+    import os
+    if os.getenv("AUTO_BOOTSTRAP", "1") == "1":
+        from app.sync_state import start_background_sync
+        start_background_sync()
+
+
 @app.get("/health")
 def health() -> dict:
     s = get_settings()

@@ -79,9 +79,10 @@ def status() -> dict:
     s = get_settings()
     faltan = [k for k, v in (("PUBLIC_BASE_URL", s.public_base_url),
                              ("ODM_WEBHOOK_SECRET", s.odm_webhook_secret)) if not v]
+    from app.sync_state import STATE as sync_state
     out = {"ckan_configured": s.ckan_configured, "odm": "unknown",
            "application": None, "application_name": None, "webhook_url": None,
-           "config_missing": faltan}
+           "config_missing": faltan, "sync": dict(sync_state)}
     try:
         c = _client_or_error()
         out["odm"] = "online"

@@ -3,27 +3,27 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ckan-jerez — Panel de operador</title>
+  <title>ckan-jerez — Consola</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = { theme: { extend: { fontFamily: { mono: ['JetBrains Mono','Monaco','monospace'] } } } }
-  </script>
+  <script>tailwind.config = { theme: { extend: { fontFamily: { mono: ['JetBrains Mono','Monaco','monospace'] } } } }</script>
   <style>
     body { background:#111827; color:#d1d5db; }
     .nav-item { display:flex; align-items:center; gap:.625rem; padding:.625rem .75rem; border-radius:.5rem; font-size:.875rem; color:#d1d5db; cursor:pointer; transition:background .15s,color .15s; }
     .nav-item:hover { background:#374151; color:#fff; }
     .nav-item.active { background:#374151; color:#fff; font-weight:500; }
     .card { background:#1f2937; border:1px solid #374151; border-radius:.75rem; }
-    .btn { font-size:.8rem; border-radius:.5rem; padding:.5rem .9rem; transition:background .15s; }
+    .btn { font-size:.8rem; border-radius:.5rem; padding:.45rem .85rem; transition:background .15s; }
     .btn-primary { background:#2563eb; color:#fff; } .btn-primary:hover { background:#3b82f6; }
     .btn-ghost { background:rgba(55,65,81,.5); color:#cbd5e1; } .btn-ghost:hover { background:#374151; color:#fff; }
     th { text-align:left; font-weight:600; color:#9ca3af; }
     td,th { padding:.5rem .65rem; border-bottom:1px solid #374151; font-size:.8rem; vertical-align:top; }
     pre { background:#0b1220; border:1px solid #374151; border-radius:.5rem; padding:.75rem; overflow:auto; font-size:.75rem; color:#cbd5e1; }
-    .pill { font-size:.7rem; padding:.1rem .5rem; border-radius:9999px; font-weight:500; }
+    .pill { font-size:.7rem; padding:.1rem .5rem; border-radius:9999px; font-weight:500; white-space:nowrap; }
+    .stline { display:flex; align-items:center; justify-content:space-between; font-size:.72rem; color:#6b7280; }
+    input, select { outline:none; }
   </style>
 </head>
 <body class="font-mono">
@@ -35,118 +35,106 @@ const { createApp, ref, reactive, onMounted, computed } = Vue
 
 createApp({
   setup() {
-    const view = ref('dashboard')
+    const view = ref('recursos')
     const nav = [
-      { id:'dashboard', label:'📊 Dashboard' },
-      { id:'fuentes', label:'🗂️ Recursos' },
-      { id:'suscripciones', label:'🔗 Suscripciones' },
-      { id:'datos', label:'⚡ Datos' },
-      { id:'entregas', label:'📨 Entregas' },
+      { id:'recursos', label:'🗂️ Recursos' },
+      { id:'actividad', label:'📨 Actividad' },
     ]
-    const odmStatus = ref('checking')   // online | offline | checking
-    const appVersion = ref('')
-    const ram = reactive({ total:0, avail:0 })
-    const status = reactive({ ckan_configured:false, application:null })
     const err = ref('')
     const busy = ref(false)
+    const appVersion = ref('')
+    const ram = reactive({ total:0, avail:0 })
+    const status = reactive({ ckan_configured:false, odm:'checking', application:null, application_name:null, webhook_url:null, config_missing:[], sync:{} })
 
-    const catalog = reactive({ publishers:{}, sources:[] })
+    const catalog = reactive({ publishers:{}, sources:[], subscribe_publishers:[] })
     const resources = ref([])
     const subscriptions = ref([])
     const executions = ref([])
     const notifications = ref([])
     const fetchers = ref([])
     const odmPubs = ref([])
+
+    const filtros = reactive({ q:'', pub:'', soloSus:false })
+    const modal = reactive({ open:false, titulo:'', texto:'' })
+    const showWizard = ref(false)
     const wizard = reactive({
       fetcher:'', preset:'', template:null, fixed:[], manifest:null, done:null,
       form: { pub:'', publisher:{acronimo:'',nombre:'',nivel:'MUNICIPAL',pais:'España',portal_url:''},
               name:'', schedule:'', params:[] },
     })
-    const result = ref(null)
 
-    const filtros = reactive({ q:'', pub:'', soloSus:true })
-    const modal = reactive({ open:false, titulo:'', texto:'' })
-    const lastOk = computed(() => {
-      const m = {}
-      for (const e of executions.value) {
-        if (e.status==='completed' && e.completedAt) {
-          if (!m[e.resourceId] || e.completedAt > m[e.resourceId]) m[e.resourceId] = e.completedAt
-        }
-      }
-      return m
-    })
-    const pubsDisponibles = computed(() => [...new Set(resources.value.map(r=>r.publisher).filter(Boolean))].sort())
-    const recursosFiltrados = computed(() => {
-      const subIds = new Set(subscriptions.value.map(s=>s.resourceId))
-      return resources.value.filter(r =>
-        (!filtros.q || (r.name||'').toLowerCase().includes(filtros.q.toLowerCase()) || (r.publisher||'').toLowerCase().includes(filtros.q.toLowerCase())) &&
-        (!filtros.pub || r.publisher === filtros.pub) &&
-        (!filtros.soloSus || subIds.has(r.id)))
-    })
-    function fmtAgo(iso) {
-      if (!iso) return '—'
-      const mins = Math.floor((Date.now() - new Date(iso+(iso.endsWith('Z')?'':'Z')).getTime())/60000)
-      if (mins < 0) return iso
-      if (mins < 60) return `hace ${mins} min`
-      if (mins < 1440) return `hace ${Math.floor(mins/60)} h`
-      return `hace ${Math.floor(mins/1440)} d`
-    }
-    function minsDesde(iso) { return iso ? Math.floor((Date.now() - new Date(iso+(iso.endsWith('Z')?'':'Z')).getTime())/60000) : null }
-    const ramPct = computed(() => ram.total ? Math.round((1 - ram.avail/ram.total)*100) : 0)
-    const ramColor = computed(() => { const f=100-ramPct.value; return f<15?'#f87171':f<30?'#fbbf24':'#34d399' })
-    const presetsOf = computed(() => (fetchers.value.find(f=>f.name===wizard.fetcher)?.presets)||[])
-
+    // ── infra ──
     async function api(path, opts) {
       const r = await fetch('/api'+path, opts)
       if (!r.ok) { let d; try{ d=await r.json() }catch{}; throw new Error(d?.detail || (r.status+' '+r.statusText)) }
       return r.json()
     }
     async function run(fn) { err.value=''; busy.value=true; try { await fn() } catch(e){ err.value=String(e.message||e) } finally { busy.value=false } }
-
-    async function checkHealth() {
-      try { const r = await fetch('/health'); odmStatus.value = r.ok ? 'online':'offline' } catch { odmStatus.value='offline' }
+    async function loadStatus() {
+      try { Object.assign(status, await api('/status')) } catch { status.odm='offline' }
       try { const d = await api('/system/info'); ram.total=d.ram_total_mb; ram.avail=d.ram_available_mb } catch {}
     }
-    async function loadStatus() { try { const d = await api('/status'); Object.assign(status,d); odmStatus.value = d.odm==='online'?'online':'offline' } catch(e){ odmStatus.value='offline' } }
 
-    const loaders = {
-      fuentes: async () => { const c = await api('/catalog'); Object.assign(catalog, c);
-        try { resources.value = await api('/odm/resources') } catch {}
-        try { odmPubs.value = await api('/odm/publishers') } catch {} },
-      suscripciones: async () => { subscriptions.value = await api('/odm/subscriptions');
-        resources.value = await api('/odm/resources') },
-      datos: async () => { resources.value = await api('/odm/resources'); executions.value = await api('/odm/executions');
-        try { subscriptions.value = await api('/odm/subscriptions') } catch {} },
-      entregas: async () => { notifications.value = await api('/odm/notifications') },
-    }
-    function go(id) { view.value = id; result.value=null; if (loaders[id]) run(loaders[id]) }
-
-    // acciones
-    const sync = reactive({ msg:'', detail:null })
-    function sincronizar() { run(async () => {
-      sync.msg=''; sync.detail=null
-      const out = await api('/bootstrap', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dry_run:false})})
-      const nuevas = (out.subscribed||[]).length, ya = (out.already_subscribed||[]).length
-      sync.msg = `Sincronizado: catálogo aplicado · Application registrada · ${nuevas+ya} suscripciones (${nuevas} nuevas)`
-      sync.detail = out
-      await loadStatus()
-    }) }
-    function refrescar(rid) {
-      const m = minsDesde(lastOk.value[rid])
-      if (m !== null && m < 60) {
-        modal.open = true; modal.titulo = 'Refresco rechazado'
-        modal.texto = `Este recurso se ejecutó con éxito hace ${m} min. Para no abusar del proveedor, se admite un refresco por hora (y ODM también lo rechazaría).`
-        return
-      }
-      run(async () => {
-        const out = await api('/odm/execute', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid})})
-        if (out && out.success === false) { modal.open=true; modal.titulo='ODM rechazó el refresco'; modal.texto = out.message || 'Rechazado.' }
-        else { result.value = out }
-        await loaders.datos()
-      })
-    }
-    async function loadFetchers() { try { fetchers.value = await api('/odm/fetchers') } catch(e){ err.value=String(e.message||e) } }
+    // ── derivados ──
     const subByResource = computed(() => { const m={}; for (const s of subscriptions.value) m[s.resourceId]=s; return m })
+    const lastOk = computed(() => {
+      const m = {}
+      for (const e of executions.value)
+        if (e.status==='completed' && e.completedAt && (!m[e.resourceId] || e.completedAt > m[e.resourceId])) m[e.resourceId]=e.completedAt
+      return m
+    })
+    const pubsDisponibles = computed(() => [...new Set(resources.value.map(r=>r.publisher).filter(Boolean))].sort())
+    const nombresEnOdm = computed(() => new Set(resources.value.map(r => (r.name||'').trim().toLowerCase())))
+    const pendientes = computed(() => (catalog.sources||[]).filter(s => !nombresEnOdm.value.has((s.name||'').trim().toLowerCase())))
+    const recursosFiltrados = computed(() => resources.value.filter(r =>
+      (!filtros.q || (r.name||'').toLowerCase().includes(filtros.q.toLowerCase()) || (r.publisher||'').toLowerCase().includes(filtros.q.toLowerCase())) &&
+      (!filtros.pub || r.publisher === filtros.pub) &&
+      (!filtros.soloSus || subByResource.value[r.id])))
+    const pubsOdmExtra = computed(() => {
+      const conocidos = new Set()
+      for (const [k,v] of Object.entries(catalog.publishers||{})) { conocidos.add(k); if (v.nombre) conocidos.add(v.nombre) }
+      return odmPubs.value.filter(p => !conocidos.has(p.acronimo) && !conocidos.has(p.nombre))
+    })
+    const ramPct = computed(() => ram.total ? Math.round((1 - ram.avail/ram.total)*100) : 0)
+    const ramColor = computed(() => { const f=100-ramPct.value; return f<15?'#f87171':f<30?'#fbbf24':'#34d399' })
+    const presetsOf = computed(() => (fetchers.value.find(f=>f.name===wizard.fetcher)?.presets)||[])
+    const syncLabel = computed(() => {
+      const s = status.sync||{}
+      if (s.last_ok) return '✓ ' + fmtAgo(s.last_ok.replace(/\.\d+/,'').replace('+00:00',''))
+      if ((status.config_missing||[]).length) return 'falta config'
+      if (s.last_error) return 'reintentando'
+      return '…'
+    })
+    function fmtAgo(iso) {
+      if (!iso) return '—'
+      const t = new Date(iso.endsWith('Z')||iso.includes('+') ? iso : iso+'Z').getTime()
+      const mins = Math.floor((Date.now()-t)/60000)
+      if (isNaN(mins)) return iso
+      if (mins < 1) return 'ahora'
+      if (mins < 60) return `hace ${mins} min`
+      if (mins < 1440) return `hace ${Math.floor(mins/60)} h`
+      return `hace ${Math.floor(mins/1440)} d`
+    }
+    function minsDesde(iso) { if (!iso) return null; const t=new Date(iso.endsWith('Z')?iso:iso+'Z').getTime(); return Math.floor((Date.now()-t)/60000) }
+    function enOdm(name) { return nombresEnOdm.value.has((name||'').trim().toLowerCase()) }
+
+    // ── cargas ──
+    async function loadRecursos() {
+      const c = await api('/catalog'); Object.assign(catalog, c)
+      resources.value = await api('/odm/resources')
+      try { subscriptions.value = await api('/odm/subscriptions') } catch {}
+      try { executions.value = await api('/odm/executions') } catch {}
+      try { odmPubs.value = await api('/odm/publishers') } catch {}
+      try { fetchers.value = await api('/odm/fetchers') } catch {}
+    }
+    async function loadActividad() {
+      try { notifications.value = await api('/odm/notifications') } catch {}
+      try { executions.value = await api('/odm/executions') } catch {}
+    }
+    const loaders = { recursos: loadRecursos, actividad: loadActividad }
+    function go(id) { view.value = id; if (loaders[id]) run(loaders[id]) }
+
+    // ── acciones ──
     function suscribir(rid) { run(async () => {
       await api('/odm/subscribe', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid})})
       subscriptions.value = await api('/odm/subscriptions')
@@ -158,32 +146,41 @@ createApp({
         subscriptions.value = await api('/odm/subscriptions')
       })
     }
+    function refrescar(rid) {
+      const m = minsDesde(lastOk.value[rid])
+      if (m !== null && m < 60) {
+        modal.open=true; modal.titulo='Refresco rechazado'
+        modal.texto=`Este recurso se ejecutó con éxito hace ${m} min. Se admite un refresco por hora para no abusar del proveedor.`
+        return
+      }
+      run(async () => {
+        const out = await api('/odm/execute', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid})})
+        if (out && out.success === false) { modal.open=true; modal.titulo='ODM rechazó el refresco'; modal.texto=out.message||'Rechazado.' }
+        await loadRecursos()
+      })
+    }
     function borrarRecurso(rid, nombre) {
-      if (!window.confirm(`¿Borrar en ODM el recurso «${nombre}»? (ODM lo rechazará si tiene suscripciones activas)`)) return
+      if (!window.confirm(`¿Borrar en ODM el recurso «${nombre}»?`)) return
       run(async () => {
         await api('/odm/resource/delete', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid})})
-        resources.value = await api('/odm/resources')
+        await loadRecursos()
       })
     }
     function clonar(rid) { run(async () => {
       const m = await api('/odm/resource/manifest?resource_id=' + encodeURIComponent(rid))
-      const r = (m.resources||[])[0] || {}
-      const pub = m.publisher || {}
-      wizard.fetcher = r.fetcher || ''
-      wizard.preset = r.preset || ''
-      wizard.template = { resources: [r] }     // habilita el formulario
-      wizard.fixed = []
-      wizard.manifest = null; wizard.done = null
-      wizard.form.pub = ''                      // publisher del export, editable
-      wizard.form.publisher = { acronimo: pub.acronimo || '', nombre: pub.nombre || '',
-                                nivel: pub.nivel || 'MUNICIPAL', pais: pub.pais || 'España',
-                                portal_url: pub.portal_url || '' }
-      wizard.form.name = (r.name || '') + ' (copia)'
-      wizard.form.schedule = (typeof r.schedule === 'string' && !r.schedule.startsWith('<')) ? r.schedule : ''
-      wizard.form.params = (r.params || []).map(p => ({key: p.key, value: p.value}))
-      window.scrollTo({top: document.body.scrollHeight, behavior: 'smooth'})
+      const r = (m.resources||[])[0] || {}; const pub = m.publisher || {}
+      wizard.fetcher = r.fetcher || ''; wizard.preset = r.preset || ''
+      wizard.template = { resources:[r] }; wizard.fixed = []; wizard.manifest=null; wizard.done=null
+      wizard.form.pub = ''
+      wizard.form.publisher = { acronimo: pub.acronimo||'', nombre: pub.nombre||'', nivel: pub.nivel||'MUNICIPAL', pais: pub.pais||'España', portal_url: pub.portal_url||'' }
+      wizard.form.name = (r.name||'') + ' (copia)'
+      wizard.form.schedule = (typeof r.schedule==='string' && !r.schedule.startsWith('<')) ? r.schedule : ''
+      wizard.form.params = (r.params||[]).map(p => ({key:p.key, value:p.value}))
+      showWizard.value = true
+      setTimeout(() => window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'}), 50)
     }) }
-    const nameToId = computed(() => { const m={}; for (const r of resources.value) m[(r.name||'').trim().toLowerCase()]=r.id; return m })
+
+    // ── asistente ──
     function getTemplate() { run(async () => {
       wizard.manifest=null; wizard.done=null
       const t = await api('/odm/manifest-template', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fetcherCode:wizard.fetcher, presetCode:wizard.preset||null})})
@@ -193,28 +190,21 @@ createApp({
       wizard.form.params = tparams.map(p => ({key:p.key, value:p.value}))
       if (!wizard.form.params.some(p=>p.key==='root_url')) wizard.form.params.push({key:'root_url', value:''})
     }) }
-    function enOdm(name) { return resources.value.some(r => (r.name||'').trim().toLowerCase() === (name||'').trim().toLowerCase()) }
     function pickPub() {
       const k = wizard.form.pub
       if (k && catalog.publishers[k]) wizard.form.publisher = {acronimo:k, ...catalog.publishers[k]}
       else if (k && k.startsWith('odm:')) {
         const p = odmPubs.value.find(x => x.id === k.slice(4)) || {}
-        wizard.form.publisher = {acronimo: p.acronimo || p.nombre || '', nombre: p.nombre || '', nivel: p.nivel || 'MUNICIPAL'}
+        wizard.form.publisher = {acronimo: p.acronimo||p.nombre||'', nombre: p.nombre||'', nivel: p.nivel||'MUNICIPAL'}
       }
       else wizard.form.publisher = {acronimo:'',nombre:'',nivel:'MUNICIPAL',pais:'España',portal_url:''}
     }
-    const pubsOdmExtra = computed(() => {
-      const conocidos = new Set()
-      for (const [k,v] of Object.entries(catalog.publishers||{})) { conocidos.add(k); if (v.nombre) conocidos.add(v.nombre) }
-      return odmPubs.value.filter(p => !conocidos.has(p.acronimo) && !conocidos.has(p.nombre))
-    })
     function addParam() { wizard.form.params.push({key:'', value:''}) }
     function delParam(i) { wizard.form.params.splice(i,1) }
     function _payload(dry) {
       const params = {}; wizard.form.params.forEach(p => { if (p.key) params[p.key]=p.value })
       return JSON.stringify({fetcher_code:wizard.fetcher, preset_code:wizard.preset||null,
-        publisher:wizard.form.publisher, name:wizard.form.name, schedule:wizard.form.schedule,
-        params, dry_run:dry})
+        publisher:wizard.form.publisher, name:wizard.form.name, schedule:wizard.form.schedule, params, dry_run:dry})
     }
     function previewSource() { run(async () => {
       const out = await api('/sources/new', {method:'POST',headers:{'Content-Type':'application/json'},body:_payload(true)})
@@ -223,17 +213,21 @@ createApp({
     function createSource() { run(async () => {
       const out = await api('/sources/new', {method:'POST',headers:{'Content-Type':'application/json'},body:_payload(false)})
       wizard.done = out.result; wizard.manifest = out.manifest
+      await loadRecursos()
     }) }
 
     onMounted(() => {
-      checkHealth(); loadStatus(); loadFetchers()
+      loadStatus(); run(loadRecursos)
       api('/version').then(d=>appVersion.value=d.version).catch(()=>{})
-      setInterval(() => { checkHealth(); loadStatus() }, 15000)
+      setInterval(loadStatus, 15000)
     })
 
-    return { view, nav, odmStatus, appVersion, ram, ramPct, ramColor, status, err, busy,
-             catalog, resources, subscriptions, executions, notifications, fetchers, wizard, presetsOf, result,
-             go, sync, sincronizar, refrescar, filtros, modal, lastOk, pubsDisponibles, recursosFiltrados, fmtAgo, subByResource, suscribir, desuscribir, borrarRecurso, clonar, nameToId, pubsOdmExtra, odmPubs, getTemplate, enOdm, pickPub, addParam, delParam, previewSource, createSource }
+    return { view, nav, err, busy, appVersion, ram, ramPct, ramColor, status, syncLabel,
+             catalog, resources, subscriptions, executions, notifications, fetchers, odmPubs,
+             filtros, modal, showWizard, wizard, presetsOf, pubsDisponibles, pubsOdmExtra,
+             subByResource, lastOk, pendientes, recursosFiltrados,
+             go, fmtAgo, enOdm, suscribir, desuscribir, refrescar, borrarRecurso, clonar,
+             getTemplate, pickPub, addParam, delParam, previewSource, createSource }
   },
   template: `
   <!-- Sidebar -->
@@ -241,26 +235,25 @@ createApp({
     <div class="p-5 border-b border-gray-700">
       <h1 class="text-lg font-bold text-blue-400 leading-tight">ckan-jerez</h1>
       <p class="text-xs text-gray-400 mt-0.5">Suscriptor de OpenDataManager</p>
-      <p v-if="appVersion" class="text-xs text-gray-600 mt-0.5">build {{ appVersion }}</p>
     </div>
     <nav class="flex-1 p-3 space-y-0.5 overflow-y-auto">
       <div v-for="n in nav" :key="n.id" class="nav-item" :class="{active: view===n.id}" @click="go(n.id)">{{ n.label }}</div>
     </nav>
-    <div class="p-4 border-t border-gray-700 space-y-3">
-      <div class="flex items-center justify-between text-xs text-gray-500">
-        <span>ODM</span>
-        <span class="flex items-center gap-1.5">
-          <span class="inline-flex h-2 w-2 rounded-full" :style="{background: odmStatus==='online'?'#34d399':odmStatus==='offline'?'#ef4444':'#fbbf24'}"></span>
-          <span :style="{color: odmStatus==='online'?'#34d399':odmStatus==='offline'?'#f87171':'#fbbf24'}">{{ odmStatus }}</span>
-        </span>
-      </div>
-      <div class="flex items-center justify-between text-xs text-gray-500">
-        <span>CKAN</span><span :style="{color: status.ckan_configured?'#34d399':'#6b7280'}">{{ status.ckan_configured ? 'configurado' : 'sin configurar' }}</span>
-      </div>
+    <div class="p-4 border-t border-gray-700 space-y-2">
+      <div class="stline"><span>ODM</span>
+        <span :style="{color: status.odm==='online'?'#34d399':'#f87171'}">● {{ status.odm }}</span></div>
+      <div class="stline"><span>CKAN</span>
+        <span :style="{color: status.ckan_configured?'#34d399':'#6b7280'}">{{ status.ckan_configured ? 'configurado' : 'sin configurar' }}</span></div>
+      <div class="stline"><span>Application</span>
+        <span v-if="status.application" style="color:#34d399" :title="'webhook: '+(status.webhook_url||'—')">✓ registrada</span>
+        <span v-else style="color:#fbbf24" :title="(status.config_missing||[]).length ? 'faltan: '+status.config_missing.join(', ') : 'pendiente'">✗ pendiente</span></div>
+      <div class="stline"><span>Sincronización</span>
+        <span :style="{color: (status.sync&&status.sync.last_ok)?'#34d399':'#fbbf24'}" :title="(status.sync&&status.sync.last_error)||''">{{ syncLabel }}</span></div>
       <div v-if="ram.total>0">
-        <div class="flex items-center justify-between text-xs mb-1"><span class="text-gray-500">RAM</span><span :style="{color:ramColor}" class="tabular-nums">{{ (ram.avail/1024).toFixed(1) }} / {{ (ram.total/1024).toFixed(1) }} GB</span></div>
+        <div class="stline mb-1"><span>RAM</span><span :style="{color:ramColor}" class="tabular-nums">{{ (ram.avail/1024).toFixed(1) }} / {{ (ram.total/1024).toFixed(1) }} GB</span></div>
         <div class="h-1.5 bg-gray-700 rounded-full overflow-hidden"><div class="h-full rounded-full" :style="{width:(100-ramPct)+'%', background:ramColor}"></div></div>
       </div>
+      <div v-if="appVersion" class="text-xs text-gray-600">build {{ appVersion }}</div>
     </div>
   </div>
 
@@ -268,68 +261,67 @@ createApp({
   <div class="flex-1 overflow-y-auto p-6">
     <div v-if="err" class="card border-red-700 bg-red-900/40 text-red-200 px-4 py-2.5 mb-4 text-sm">⚠️ {{ err }}</div>
 
-    <!-- Dashboard -->
-    <div v-if="view==='dashboard'">
-      <h2 class="text-xl font-bold text-gray-100 mb-1">Dashboard</h2>
-      <p class="text-sm text-gray-400 mb-5">Consola de manejo de las suscripciones al servicio de datos abiertos para el portal CKAN-Jerez.</p>
-      <div class="grid grid-cols-3 gap-4 mb-6">
-        <div class="card p-4"><div class="text-xs text-gray-500 mb-1">ODM</div><div class="text-lg" :style="{color: odmStatus==='online'?'#34d399':'#f87171'}">{{ odmStatus }}</div></div>
-        <div class="card p-4"><div class="text-xs text-gray-500 mb-1">CKAN</div><div class="text-lg">{{ status.ckan_configured ? 'configurado' : 'sin configurar' }}</div></div>
-        <div class="card p-4"><div class="text-xs text-gray-500 mb-1">Application en ODM</div>
-          <div v-if="status.application" class="text-sm" style="color:#34d399">✓ registrada como «{{ status.application_name }}»<div class="text-xs text-gray-500 mt-0.5 truncate">webhook: {{ status.webhook_url || '—' }}</div></div>
-          <div v-else class="text-sm" style="color:#fbbf24">✗ NO registrada<div class="text-xs text-gray-500 mt-0.5">{{ (status.config_missing||[]).length ? 'faltan: '+status.config_missing.join(', ')+' (secreto de despliegue)' : 'pulsa Sincronizar' }}</div></div>
-        </div>
+    <!-- Recursos -->
+    <div v-if="view==='recursos'">
+      <div class="flex items-center justify-between mb-1">
+        <h2 class="text-xl font-bold text-gray-100">Recursos</h2>
+        <button class="btn btn-primary" @click="showWizard = !showWizard">{{ showWizard ? 'Cerrar asistente' : '+ Nuevo recurso' }}</button>
       </div>
-      <div class="card p-5">
-        <h3 class="text-sm font-semibold text-gray-200 mb-1">Sincronización con ODM</h3>
-        <p class="text-xs text-gray-500 mb-3">Se sincroniza sola al arrancar (recursos declarados, registro como aplicación y suscripciones). Este botón fuerza una sincronización ahora.</p>
-        <button class="btn btn-primary" :disabled="busy" @click="sincronizar">{{ busy ? 'Sincronizando…' : 'Sincronizar ahora' }}</button>
-        <div v-if="sync.msg" class="card border-green-700 bg-green-900/30 text-green-200 px-4 py-2.5 mt-3 text-sm">✅ {{ sync.msg }}</div>
-        <details v-if="sync.detail" class="mt-2"><summary class="text-xs text-gray-500 cursor-pointer">detalle técnico</summary>
-          <pre class="mt-2">{{ JSON.stringify(sync.detail, null, 2) }}</pre></details>
-      </div>
-    </div>
-
-    <!-- Fuentes -->
-    <div v-else-if="view==='fuentes'">
-      <h2 class="text-xl font-bold text-gray-100 mb-1">Recursos</h2>
       <p class="text-sm text-gray-400 mb-5">Orígenes de datos de los que se abastece CKAN-Jerez.</p>
+
       <div class="card p-5 mb-6">
-        <table class="w-full"><thead><tr><th>Nombre</th><th>Publisher</th><th>Fetcher</th><th>Preset</th><th>Estado</th></tr></thead>
-          <tbody><tr v-for="s in catalog.sources" :key="s.name">
-            <td class="text-gray-200">{{ s.name }}</td><td>{{ (catalog.publishers[s.publisher]||{}).nombre || s.publisher }}</td>
-            <td><span class="pill bg-gray-700 text-gray-200">{{ s.fetcher }}</span></td><td class="text-gray-400">{{ s.preset || '—' }}</td>
-            <td><span class="pill" :style="enOdm(s.name) ? 'background:#064e3b;color:#34d399' : 'background:#78350f;color:#fbbf24'">{{ enOdm(s.name) ? 'en ODM' : 'pendiente' }}</span>
-              <button v-if="enOdm(s.name)" class="btn btn-ghost ml-2" :disabled="busy" @click="clonar(nameToId[(s.name||'').trim().toLowerCase()])">Clonar</button>
-              <button v-if="enOdm(s.name)" class="btn btn-ghost ml-2" :disabled="busy" @click="borrarRecurso(nameToId[(s.name||'').trim().toLowerCase()], s.name)">Borrar</button></td>
-          </tr>
-          <tr v-for="r in resources.filter(r => !catalog.sources.some(s => s.name === r.name) && (catalog.subscribe_publishers||[]).some(a => r.publisher === a || r.publisher === ((catalog.publishers[a]||{}).nombre)))" :key="r.id">
-            <td class="text-gray-300" :title="r.id">{{ r.name }}</td><td>{{ r.publisher }}</td>
-            <td class="text-gray-500" colspan="2">heredado (en ODM, no declarado)</td>
-            <td><span class="pill" style="background:#1e3a8a;color:#93c5fd">adoptado</span>
-              <button class="btn btn-ghost ml-2" :disabled="busy" @click="clonar(r.id)">Clonar</button>
-              <button class="btn btn-ghost ml-2" :disabled="busy" @click="borrarRecurso(r.id, r.name)">Borrar</button></td>
-          </tr></tbody></table>
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+          <input v-model="filtros.q" placeholder="Buscar por nombre o publisher…" class="flex-1 min-w-64 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200">
+          <select v-model="filtros.pub" class="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+            <option value="">Publisher: todos</option>
+            <option v-for="p in pubsDisponibles" :key="p" :value="p">{{ p }}</option>
+          </select>
+          <label class="text-xs text-gray-400 flex items-center gap-1.5"><input type="checkbox" v-model="filtros.soloSus"> solo suscritos</label>
+          <span class="text-xs text-gray-500 ml-auto">{{ recursosFiltrados.length }} / {{ resources.length }}</span>
+        </div>
+        <table class="w-full"><thead><tr><th>Nombre</th><th>Publisher</th><th>Suscripción</th><th>Última ejecución OK</th><th class="text-right">Acciones</th></tr></thead>
+          <tbody>
+            <tr v-for="s in pendientes" :key="'p-'+s.name">
+              <td class="text-gray-400">{{ s.name }}</td>
+              <td class="text-gray-500">{{ (catalog.publishers[s.publisher]||{}).nombre || s.publisher }}</td>
+              <td colspan="2"><span class="pill" style="background:#78350f;color:#fbbf24">pendiente de crear en ODM</span></td>
+              <td></td>
+            </tr>
+            <tr v-for="r in recursosFiltrados" :key="r.id">
+              <td class="text-gray-200" :title="r.id">{{ r.name }}</td>
+              <td class="text-gray-400">{{ r.publisher || '—' }}</td>
+              <td>
+                <button v-if="subByResource[r.id]" class="pill" style="background:#064e3b;color:#34d399;border:0;cursor:pointer" :disabled="busy" @click="desuscribir(r.id)" title="Pulsar para desuscribir">✓ suscrito</button>
+                <button v-else class="pill bg-gray-700 text-gray-300" style="border:0;cursor:pointer" :disabled="busy || !status.application" @click="suscribir(r.id)" :title="status.application ? 'Pulsar para suscribir' : 'Requiere Application registrada'">suscribir</button>
+              </td>
+              <td :style="{color: (lastOk[r.id] && (Date.now()-new Date(lastOk[r.id]+'Z').getTime())<3600000) ? '#34d399' : '#6b7280'}">{{ fmtAgo(lastOk[r.id]) }}</td>
+              <td class="text-right whitespace-nowrap">
+                <button class="btn btn-ghost" :disabled="busy" @click="refrescar(r.id)">Refrescar</button>
+                <button class="btn btn-ghost ml-1" :disabled="busy" @click="clonar(r.id)">Clonar</button>
+                <button class="btn btn-ghost ml-1" :disabled="busy" @click="borrarRecurso(r.id, r.name)">Borrar</button>
+              </td>
+            </tr>
+            <tr v-if="!recursosFiltrados.length && !pendientes.length"><td colspan="5" class="text-gray-500">Sin recursos con ese filtro.</td></tr>
+          </tbody></table>
       </div>
-      <div class="card p-5">
-        <h3 class="text-sm font-semibold text-gray-200 mb-3">Nuevo recurso (asistente)</h3>
+
+      <!-- Asistente (a demanda) -->
+      <div v-if="showWizard" class="card p-5">
+        <h3 class="text-sm font-semibold text-gray-200 mb-3">Nuevo recurso</h3>
         <div class="flex flex-wrap items-end gap-3">
           <label class="text-xs text-gray-400">Fetcher
             <select v-model="wizard.fetcher" @change="wizard.preset=''" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
               <option value="">—</option><option v-for="f in fetchers" :key="f.id" :value="f.name">{{ f.name }}</option></select></label>
-          <label class="text-xs text-gray-400">Variante (preset)
+          <label class="text-xs text-gray-400">Variante
             <select v-model="wizard.preset" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
               <option value="">(ninguna)</option><option v-for="p in presetsOf" :key="p.id" :value="p.code">{{ p.code }}</option></select></label>
-          <button class="btn btn-primary" :disabled="busy || !wizard.fetcher" @click="getTemplate">Obtener plantilla</button>
+          <button class="btn btn-ghost" :disabled="busy || !wizard.fetcher" @click="getTemplate">Empezar</button>
         </div>
-        <p class="text-xs text-gray-500 mt-2">Lo fijo lo trae la variante; rellena solo los campos. El manifiesto se compone solo (puedes previsualizarlo).</p>
 
         <div v-if="wizard.template" class="mt-4 space-y-4">
           <div v-if="wizard.fixed.length" class="text-xs text-gray-400">
-            Fijado por la variante:
-            <span v-for="f in wizard.fixed" :key="f" class="pill bg-gray-700 text-gray-300 ml-1">🔒 {{ f }}</span>
+            Fijado por la variante: <span v-for="f in wizard.fixed" :key="f" class="pill bg-gray-700 text-gray-300 ml-1">🔒 {{ f }}</span>
           </div>
-
           <div class="grid grid-cols-2 gap-3">
             <label class="text-xs text-gray-400">Publisher
               <select v-model="wizard.form.pub" @change="pickPub" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
@@ -346,19 +338,18 @@ createApp({
           </div>
           <div v-if="!wizard.form.pub" class="grid grid-cols-4 gap-3">
             <label class="text-xs text-gray-400">Acrónimo
-              <input v-model="wizard.form.publisher.acronimo" placeholder="AYTOJEREZ" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+              <input v-model="wizard.form.publisher.acronimo" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
             <label class="text-xs text-gray-400">Nombre
               <input v-model="wizard.form.publisher.nombre" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
             <label class="text-xs text-gray-400">Nivel
               <select v-model="wizard.form.publisher.nivel" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
                 <option>MUNICIPAL</option><option>PROVINCIAL</option><option>AUTONOMICO</option><option>ESTATAL</option></select></label>
             <label class="text-xs text-gray-400">Portal
-              <input v-model="wizard.form.publisher.portal_url" placeholder="https://…" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+              <input v-model="wizard.form.publisher.portal_url" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
           </div>
-
           <div>
             <div class="flex items-center justify-between mb-1">
-              <span class="text-xs text-gray-400">Parámetros del recurso (los de la variante vienen precargados)</span>
+              <span class="text-xs text-gray-400">Parámetros (los de la variante vienen precargados)</span>
               <button class="btn btn-ghost" @click="addParam">+ parámetro</button>
             </div>
             <div v-for="(p,i) in wizard.form.params" :key="i" class="flex gap-2 mb-1.5">
@@ -367,104 +358,45 @@ createApp({
               <button class="btn btn-ghost" @click="delParam(i)">✕</button>
             </div>
           </div>
-
           <div class="grid grid-cols-2 gap-3">
             <label class="text-xs text-gray-400">Schedule (cron, opcional)
               <input v-model="wizard.form.schedule" placeholder="0 4 1 * *" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
           </div>
-
           <div v-if="wizard.form.name && enOdm(wizard.form.name)" class="text-xs" style="color:#fbbf24">
             ⚠️ Ya existe en ODM un recurso con ese nombre: al crear se ACTUALIZARÁ (no se duplica).
           </div>
           <div class="flex gap-2">
-            <button class="btn btn-ghost" :disabled="busy" @click="previewSource">Previsualizar manifiesto</button>
             <button class="btn btn-primary" :disabled="busy || !wizard.form.name" @click="createSource">Crear en ODM</button>
+            <button class="btn btn-ghost" :disabled="busy" @click="previewSource">Previsualizar manifiesto</button>
           </div>
-          <div v-if="wizard.done" class="card border-green-700 bg-green-900/30 text-green-200 px-4 py-2.5 text-sm">
-            ✅ Importado: {{ JSON.stringify(wizard.done) }}
-          </div>
-          <details v-if="wizard.manifest"><summary class="text-xs text-gray-400 cursor-pointer">Ver manifiesto generado</summary>
+          <div v-if="wizard.done" class="card border-green-700 bg-green-900/30 text-green-200 px-4 py-2.5 text-sm">✅ {{ JSON.stringify(wizard.done) }}</div>
+          <details v-if="wizard.manifest"><summary class="text-xs text-gray-500 cursor-pointer">manifiesto generado</summary>
             <pre class="mt-2">{{ JSON.stringify(wizard.manifest, null, 2) }}</pre></details>
         </div>
       </div>
     </div>
 
-    <!-- Suscripciones -->
-    <div v-else-if="view==='suscripciones'">
-      <h2 class="text-xl font-bold text-gray-100 mb-1">Suscripciones</h2>
-      <p class="text-sm text-gray-400 mb-5">Suscríbete a cualquier recurso de ODM (lo hayas creado tú o no): ODM avisará por webhook cuando cargue datos nuevos.</p>
-      <div v-if="!status.application" class="card border-yellow-700 bg-yellow-900/20 text-yellow-200 px-4 py-2.5 mb-4 text-sm">
-        ⚠️ ckan-mgr aún no está registrada como Application en ODM, condición necesaria para suscribirse y recibir webhooks.
-        {{ (status.config_missing||[]).length ? 'Faltan en la configuración: '+status.config_missing.join(', ')+'.' : 'Pulsa «Sincronizar ahora» en el Dashboard.' }}
-      </div>
-      <div class="card p-5">
-        <div class="flex flex-wrap items-center gap-3 mb-4">
-          <input v-model="filtros.q" placeholder="Buscar por nombre o publisher…" class="flex-1 min-w-64 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200">
-          <select v-model="filtros.pub" class="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
-            <option value="">Publisher: todos</option>
-            <option v-for="p in pubsDisponibles" :key="p" :value="p">{{ p }}</option>
-          </select>
-        </div>
-        <table class="w-full"><thead><tr><th>Recurso</th><th>Publisher</th><th>Suscripción</th><th></th></tr></thead>
-          <tbody><tr v-for="r in resources.filter(r => (!filtros.q || (r.name||'').toLowerCase().includes(filtros.q.toLowerCase()) || (r.publisher||'').toLowerCase().includes(filtros.q.toLowerCase())) && (!filtros.pub || r.publisher===filtros.pub))" :key="r.id">
-            <td class="text-gray-200" :title="r.id">{{ r.name }}</td><td class="text-gray-400">{{ r.publisher || '—' }}</td>
-            <td>
-              <span v-if="subByResource[r.id]" class="pill" style="background:#064e3b;color:#34d399">suscrito · {{ subByResource[r.id].autoUpgrade }}</span>
-              <span v-else class="pill bg-gray-700 text-gray-400">no suscrito</span>
-            </td>
-            <td class="text-right">
-              <button v-if="subByResource[r.id]" class="btn btn-ghost" :disabled="busy" @click="desuscribir(r.id)">Desuscribir</button>
-              <button v-else class="btn btn-primary" :disabled="busy || !status.application" @click="suscribir(r.id)">Suscribir</button>
-            </td>
-          </tr><tr v-if="!resources.length"><td colspan="4" class="text-gray-500">Sin recursos.</td></tr></tbody></table>
-      </div>
-    </div>
-
-    <!-- Datos -->
-    <div v-else-if="view==='datos'">
-      <h2 class="text-xl font-bold text-gray-100 mb-1">Datos / Refresco</h2>
-      <p class="text-sm text-gray-400 mb-5">Estado de los recursos en ODM y sus ejecuciones. «Refrescar» dispara una ejecución.</p>
-      <pre v-if="result" class="mb-4">{{ JSON.stringify(result, null, 2) }}</pre>
+    <!-- Actividad -->
+    <div v-else-if="view==='actividad'">
+      <h2 class="text-xl font-bold text-gray-100 mb-1">Actividad</h2>
+      <p class="text-sm text-gray-400 mb-5">Entregas de webhook recibidas y ejecuciones recientes en ODM.</p>
       <div class="card p-5 mb-6">
-        <div class="flex flex-wrap items-center gap-3 mb-4">
-          <input v-model="filtros.q" placeholder="Buscar por nombre o publisher…" class="flex-1 min-w-64 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200">
-          <select v-model="filtros.pub" class="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
-            <option value="">Publisher: todos</option>
-            <option v-for="p in pubsDisponibles" :key="p" :value="p">{{ p }}</option>
-          </select>
-          <label class="text-xs text-gray-400 flex items-center gap-1.5">
-            <input type="checkbox" v-model="filtros.soloSus"> solo suscritos</label>
-          <span class="text-xs text-gray-500 ml-auto">{{ recursosFiltrados.length }} / {{ resources.length }}</span>
-        </div>
-        <table class="w-full"><thead><tr><th>Nombre</th><th>Publisher</th><th>Última ejecución OK</th><th></th></tr></thead>
-          <tbody><tr v-for="r in recursosFiltrados" :key="r.id">
-            <td class="text-gray-200">{{ r.name }}</td><td class="text-gray-400">{{ r.publisher || '—' }}</td>
-            <td :class="(lastOk[r.id] && (Date.now()-new Date(lastOk[r.id]+'Z').getTime())<3600000) ? 'text-green-400' : 'text-gray-500'">{{ fmtAgo(lastOk[r.id]) }}</td>
-            <td class="text-right"><button class="btn btn-ghost" :disabled="busy" @click="refrescar(r.id)">Refrescar</button></td>
-          </tr><tr v-if="!recursosFiltrados.length"><td colspan="4" class="text-gray-500">Sin recursos con ese filtro.</td></tr></tbody></table>
-      </div>
-      <div class="card p-5">
-        <h3 class="text-sm font-semibold text-gray-200 mb-3">Ejecuciones recientes</h3>
-        <table class="w-full"><thead><tr><th>Recurso</th><th>Estado</th><th>Inicio</th><th>Registros</th></tr></thead>
-          <tbody><tr v-for="e in executions" :key="e.id">
-            <td>{{ e.resourceName || e.resourceId }}</td>
-            <td><span class="pill" :style="{background: e.status==='completed'?'#064e3b':e.status==='failed'?'#7f1d1d':'#374151', color: e.status==='completed'?'#34d399':e.status==='failed'?'#f87171':'#cbd5e1'}">{{ e.status }}</span></td>
-            <td class="text-gray-500">{{ e.startedAt }}</td><td>{{ e.recordsLoaded ?? e.totalRecords ?? '—' }}</td>
-          </tr><tr v-if="!executions.length"><td colspan="4" class="text-gray-500">Sin ejecuciones.</td></tr></tbody></table>
-      </div>
-    </div>
-
-    <!-- Entregas -->
-    <div v-else-if="view==='entregas'">
-      <h2 class="text-xl font-bold text-gray-100 mb-1">Entregas</h2>
-      <p class="text-sm text-gray-400 mb-5">Auditoría de los webhooks que ODM ha entregado a esta Application.</p>
-      <div class="card p-5">
+        <h3 class="text-sm font-semibold text-gray-200 mb-3">Entregas (webhooks de ODM)</h3>
         <table class="w-full"><thead><tr><th>Enviado</th><th>Dataset</th><th>HTTP</th><th>Error</th></tr></thead>
           <tbody><tr v-for="n in notifications" :key="n.id">
-            <td class="text-gray-500">{{ n.sentAt }}</td><td>{{ n.datasetId || '—' }}</td>
+            <td class="text-gray-500">{{ fmtAgo(n.sentAt) }}</td><td>{{ n.datasetId || '—' }}</td>
             <td><span class="pill" :style="{background: n.statusCode>=200&&n.statusCode<300?'#064e3b':'#7f1d1d', color: n.statusCode>=200&&n.statusCode<300?'#34d399':'#f87171'}">{{ n.statusCode || '—' }}</span></td>
             <td class="text-red-300">{{ n.errorMessage || '' }}</td>
-          </tr><tr v-if="!notifications.length"><td colspan="4" class="text-gray-500">Sin entregas.</td></tr></tbody></table>
+          </tr><tr v-if="!notifications.length"><td colspan="4" class="text-gray-500">Sin entregas todavía.</td></tr></tbody></table>
+      </div>
+      <div class="card p-5">
+        <h3 class="text-sm font-semibold text-gray-200 mb-3">Ejecuciones en ODM</h3>
+        <table class="w-full"><thead><tr><th>Recurso</th><th>Estado</th><th>Inicio</th><th>Registros</th></tr></thead>
+          <tbody><tr v-for="e in executions.slice(0,30)" :key="e.id">
+            <td>{{ e.resourceName || e.resourceId }}</td>
+            <td><span class="pill" :style="{background: e.status==='completed'?'#064e3b':e.status==='failed'?'#7f1d1d':'#374151', color: e.status==='completed'?'#34d399':e.status==='failed'?'#f87171':'#cbd5e1'}">{{ e.status }}</span></td>
+            <td class="text-gray-500">{{ fmtAgo(e.startedAt) }}</td><td>{{ e.recordsLoaded ?? e.totalRecords ?? '—' }}</td>
+          </tr><tr v-if="!executions.length"><td colspan="4" class="text-gray-500">Sin ejecuciones.</td></tr></tbody></table>
       </div>
     </div>
   </div>
