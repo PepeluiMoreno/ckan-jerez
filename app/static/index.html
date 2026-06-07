@@ -38,7 +38,7 @@ createApp({
     const view = ref('dashboard')
     const nav = [
       { id:'dashboard', label:'📊 Dashboard' },
-      { id:'fuentes', label:'🗂️ Fuentes' },
+      { id:'fuentes', label:'🗂️ Recursos' },
       { id:'suscripciones', label:'🔗 Suscripciones' },
       { id:'datos', label:'⚡ Datos' },
       { id:'entregas', label:'📨 Entregas' },
@@ -190,8 +190,8 @@ createApp({
 
     <!-- Fuentes -->
     <div v-else-if="view==='fuentes'">
-      <h2 class="text-xl font-bold text-gray-100 mb-1">Fuentes</h2>
-      <p class="text-sm text-gray-400 mb-5">Catálogo heterogéneo (varios publishers, varios fetchers). Particularizado con params.</p>
+      <h2 class="text-xl font-bold text-gray-100 mb-1">Recursos</h2>
+      <p class="text-sm text-gray-400 mb-5">Recursos declarados para CKAN-Jerez: catálogo heterogéneo (varios publishers, varios fetchers), particularizado con params.</p>
       <div class="card p-5 mb-6">
         <h3 class="text-sm font-semibold text-gray-200 mb-3">Catálogo declarado</h3>
         <table class="w-full"><thead><tr><th>Nombre</th><th>Publisher</th><th>Fetcher</th><th>Preset</th></tr></thead>
@@ -201,7 +201,7 @@ createApp({
           </tr></tbody></table>
       </div>
       <div class="card p-5">
-        <h3 class="text-sm font-semibold text-gray-200 mb-3">Nueva fuente (asistente)</h3>
+        <h3 class="text-sm font-semibold text-gray-200 mb-3">Nuevo recurso (asistente)</h3>
         <div class="flex flex-wrap items-end gap-3">
           <label class="text-xs text-gray-400">Fetcher
             <select v-model="wizard.fetcher" @change="wizard.preset=''" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
@@ -286,10 +286,10 @@ createApp({
     <!-- Datos -->
     <div v-else-if="view==='datos'">
       <h2 class="text-xl font-bold text-gray-100 mb-1">Datos / Refresco</h2>
-      <p class="text-sm text-gray-400 mb-5">Recursos en ODM y sus ejecuciones. «Refrescar» dispara una ejecución.</p>
+      <p class="text-sm text-gray-400 mb-5">Estado de los recursos en ODM y sus ejecuciones. «Refrescar» dispara una ejecución.</p>
       <pre v-if="result" class="mb-4">{{ JSON.stringify(result, null, 2) }}</pre>
       <div class="card p-5 mb-6">
-        <h3 class="text-sm font-semibold text-gray-200 mb-3">Recursos</h3>
+        <h3 class="text-sm font-semibold text-gray-200 mb-3">Recursos en ODM</h3>
         <table class="w-full"><thead><tr><th>Nombre</th><th>Publisher</th><th></th></tr></thead>
           <tbody><tr v-for="r in resources" :key="r.id">
             <td class="text-gray-200">{{ r.name }}</td><td class="text-gray-400">{{ r.publisher || '—' }}</td>
