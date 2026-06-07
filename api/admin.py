@@ -122,6 +122,12 @@ def odm_publishers() -> Any:
     return _odm(lambda c: c.publishers())
 
 
+@router.get("/odm/resource/manifest")
+def odm_resource_manifest(resource_id: str) -> Any:
+    """Export de un recurso (para pre-rellenar el asistente al clonar)."""
+    return _odm(lambda c: c.resource_manifest(resource_id))
+
+
 @router.get("/odm/fetchers")
 def odm_fetchers() -> Any:
     return _odm(lambda c: c.fetchers())

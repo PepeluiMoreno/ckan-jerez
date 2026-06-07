@@ -165,6 +165,24 @@ createApp({
         resources.value = await api('/odm/resources')
       })
     }
+    function clonar(rid) { run(async () => {
+      const m = await api('/odm/resource/manifest?resource_id=' + encodeURIComponent(rid))
+      const r = (m.resources||[])[0] || {}
+      const pub = m.publisher || {}
+      wizard.fetcher = r.fetcher || ''
+      wizard.preset = r.preset || ''
+      wizard.template = { resources: [r] }     // habilita el formulario
+      wizard.fixed = []
+      wizard.manifest = null; wizard.done = null
+      wizard.form.pub = ''                      // publisher del export, editable
+      wizard.form.publisher = { acronimo: pub.acronimo || '', nombre: pub.nombre || '',
+                                nivel: pub.nivel || 'MUNICIPAL', pais: pub.pais || 'España',
+                                portal_url: pub.portal_url || '' }
+      wizard.form.name = (r.name || '') + ' (copia)'
+      wizard.form.schedule = (typeof r.schedule === 'string' && !r.schedule.startsWith('<')) ? r.schedule : ''
+      wizard.form.params = (r.params || []).map(p => ({key: p.key, value: p.value}))
+      window.scrollTo({top: document.body.scrollHeight, behavior: 'smooth'})
+    }) }
     const nameToId = computed(() => { const m={}; for (const r of resources.value) m[(r.name||'').trim().toLowerCase()]=r.id; return m })
     function getTemplate() { run(async () => {
       wizard.manifest=null; wizard.done=null
@@ -215,7 +233,7 @@ createApp({
 
     return { view, nav, odmStatus, appVersion, ram, ramPct, ramColor, status, err, busy,
              catalog, resources, subscriptions, executions, notifications, fetchers, wizard, presetsOf, result,
-             go, sync, sincronizar, refrescar, filtros, modal, lastOk, pubsDisponibles, recursosFiltrados, fmtAgo, subByResource, suscribir, desuscribir, borrarRecurso, nameToId, pubsOdmExtra, odmPubs, getTemplate, enOdm, pickPub, addParam, delParam, previewSource, createSource }
+             go, sync, sincronizar, refrescar, filtros, modal, lastOk, pubsDisponibles, recursosFiltrados, fmtAgo, subByResource, suscribir, desuscribir, borrarRecurso, clonar, nameToId, pubsOdmExtra, odmPubs, getTemplate, enOdm, pickPub, addParam, delParam, previewSource, createSource }
   },
   template: `
   <!-- Sidebar -->
@@ -282,12 +300,14 @@ createApp({
             <td class="text-gray-200">{{ s.name }}</td><td>{{ (catalog.publishers[s.publisher]||{}).nombre || s.publisher }}</td>
             <td><span class="pill bg-gray-700 text-gray-200">{{ s.fetcher }}</span></td><td class="text-gray-400">{{ s.preset || '—' }}</td>
             <td><span class="pill" :style="enOdm(s.name) ? 'background:#064e3b;color:#34d399' : 'background:#78350f;color:#fbbf24'">{{ enOdm(s.name) ? 'en ODM' : 'pendiente' }}</span>
+              <button v-if="enOdm(s.name)" class="btn btn-ghost ml-2" :disabled="busy" @click="clonar(nameToId[(s.name||'').trim().toLowerCase()])">Clonar</button>
               <button v-if="enOdm(s.name)" class="btn btn-ghost ml-2" :disabled="busy" @click="borrarRecurso(nameToId[(s.name||'').trim().toLowerCase()], s.name)">Borrar</button></td>
           </tr>
           <tr v-for="r in resources.filter(r => !catalog.sources.some(s => s.name === r.name) && (catalog.subscribe_publishers||[]).some(a => r.publisher === a || r.publisher === ((catalog.publishers[a]||{}).nombre)))" :key="r.id">
             <td class="text-gray-300" :title="r.id">{{ r.name }}</td><td>{{ r.publisher }}</td>
             <td class="text-gray-500" colspan="2">heredado (en ODM, no declarado)</td>
             <td><span class="pill" style="background:#1e3a8a;color:#93c5fd">adoptado</span>
+              <button class="btn btn-ghost ml-2" :disabled="busy" @click="clonar(r.id)">Clonar</button>
               <button class="btn btn-ghost ml-2" :disabled="busy" @click="borrarRecurso(r.id, r.name)">Borrar</button></td>
           </tr></tbody></table>
       </div>

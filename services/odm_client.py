@@ -108,6 +108,9 @@ Q_APP_NOTIFICATIONS = (
     "}"
 )
 
+Q_RESOURCE_MANIFEST = (
+    "query Exportar($id: String!) { resourceManifest(id: $id) }"
+)
 Q_PUBLISHERS = (
     "query Pubs { publishers { id nombre acronimo nivel } }"
 )
@@ -361,6 +364,10 @@ class OdmClient:
         """Borra un recurso en ODM (soft por defecto). ODM lo rechaza si tiene
         suscripciones activas (guardia de integridad)."""
         return self.execute(M_DELETE_RESOURCE, {"id": resource_id, "hard": hard})["deleteResource"]
+
+    def resource_manifest(self, resource_id: str) -> dict:
+        """Exporta un recurso como manifiesto importable (base de la clonación)."""
+        return self.execute(Q_RESOURCE_MANIFEST, {"id": resource_id})["resourceManifest"]
 
     def publishers(self) -> list[dict]:
         """Lista las entidades publisher (id, nombre, acrónimo) para resolver
