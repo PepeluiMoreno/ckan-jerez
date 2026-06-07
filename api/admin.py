@@ -107,7 +107,7 @@ def odm_resources() -> Any:
     def _con_publisher(c):
         rs = c.resources()
         try:
-            ents = {p["id"]: (p.get("acronimo") or p.get("nombre")) for p in c.publishers()}
+            ents = {p["id"]: (p.get("nombre") or p.get("acronimo")) for p in c.publishers()}
         except Exception:  # noqa: BLE001
             ents = {}
         for r in rs:
@@ -115,6 +115,11 @@ def odm_resources() -> Any:
                 r["publisher"] = ents.get(r["publisherId"]) or None
         return rs
     return _odm(_con_publisher)
+
+
+@router.get("/odm/publishers")
+def odm_publishers() -> Any:
+    return _odm(lambda c: c.publishers())
 
 
 @router.get("/odm/fetchers")
