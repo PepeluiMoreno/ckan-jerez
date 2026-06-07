@@ -61,8 +61,14 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           envs: CKANJEREZ_ENV_PRODUCTION
           script: |
-            cd /opt/docker/apps/ckan-jerez
-            git pull
+            APP_DIR=/opt/docker/apps/ckan-jerez
+            if [ ! -d "$APP_DIR/.git" ]; then
+              echo "[bootstrap] primer despliegue: clonando el repo en $APP_DIR"
+              mkdir -p "$APP_DIR"
+              git clone https://github.com/PepeluiMoreno/ckan-jerez.git "$APP_DIR"
+            fi
+            cd "$APP_DIR"
+            git pull --ff-only
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             umask 077
             printf '%s\n' "$CKANJEREZ_ENV_PRODUCTION" > .env.production
