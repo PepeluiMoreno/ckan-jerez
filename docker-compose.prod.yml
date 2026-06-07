@@ -7,7 +7,7 @@ services:
     image: ghcr.io/pepeluimoreno/ckan-jerez:latest
     networks:
       - internal
-      - web                      # red EXTERNA del reverse-proxy (ajusta el nombre a tu Traefik)
+      - traefik-public           # red EXTERNA de Traefik
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.ckanjerez.rule=Host(`odclient.pepelui.es`)"
@@ -22,7 +22,7 @@ services:
 #   ('websecure') y certresolver ('letsencrypt'). Con otro proxy (nginx/Caddy),
 #   sustituye estas labels apuntando al contenedor en el puerto 8000.
 networks:
-  web:
+  traefik-public:
     external: true
 # Cuando el CKAN propio tenga web, aquí se añadirán sus servicios (postgres+solr+
 # redis del CKAN) — en la red PROPIA de ckan-jerez, nunca la de ODM.
