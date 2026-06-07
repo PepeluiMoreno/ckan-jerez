@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ckan-jerez — Panel de operador</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { fontFamily: { mono: ['JetBrains Mono','Monaco','monospace'] } } } }
+  </script>
+  <style>
+    body { background:#111827; color:#d1d5db; }
+    .nav-item { display:flex; align-items:center; gap:.625rem; padding:.625rem .75rem; border-radius:.5rem; font-size:.875rem; color:#d1d5db; cursor:pointer; transition:background .15s,color .15s; }
+    .nav-item:hover { background:#374151; color:#fff; }
+    .nav-item.active { background:#374151; color:#fff; font-weight:500; }
+    .card { background:#1f2937; border:1px solid #374151; border-radius:.75rem; }
+    .btn { font-size:.8rem; border-radius:.5rem; padding:.5rem .9rem; transition:background .15s; }
+    .btn-primary { background:#2563eb; color:#fff; } .btn-primary:hover { background:#3b82f6; }
+    .btn-ghost { background:rgba(55,65,81,.5); color:#cbd5e1; } .btn-ghost:hover { background:#374151; color:#fff; }
+    th { text-align:left; font-weight:600; color:#9ca3af; }
+    td,th { padding:.5rem .65rem; border-bottom:1px solid #374151; font-size:.8rem; vertical-align:top; }
+    pre { background:#0b1220; border:1px solid #374151; border-radius:.5rem; padding:.75rem; overflow:auto; font-size:.75rem; color:#cbd5e1; }
+    .pill { font-size:.7rem; padding:.1rem .5rem; border-radius:9999px; font-weight:500; }
+  </style>
+</head>
+<body class="font-mono">
+<div id="app" class="flex h-screen overflow-hidden"></div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+<script>
+const { createApp, ref, reactive, onMounted, computed } = Vue
+
+createApp({
+  setup() {
+    const view = ref('dashboard')
+    const nav = [
+      { id:'dashboard', label:'📊 Dashboard' },
+      { id:'fuentes', label:'🗂️ Fuentes' },
+      { id:'suscripciones', label:'🔗 Suscripciones' },
+      { id:'datos', label:'⚡ Datos' },
+      { id:'entregas', label:'📨 Entregas' },
+    ]
+    const odmStatus = ref('checking')   // online | offline | checking
+    const appVersion = ref('')
+    const ram = reactive({ total:0, avail:0 })
+    const status = reactive({ ckan_configured:false, application:null })
+    const err = ref('')
+    const busy = ref(false)
+
+    const catalog = reactive({ publishers:{}, sources:[] })
+    const resources = ref([])
+    const subscriptions = ref([])
+    const executions = ref([])
+    const notifications = ref([])
+    const fetchers = ref([])
+    const wizard = reactive({ fetcher:'', preset:'', template:null })
+    const result = ref(null)
+
+    const ramPct = computed(() => ram.total ? Math.round((1 - ram.avail/ram.total)*100) : 0)
+    const ramColor = computed(() => { const f=100-ramPct.value; return f<15?'#f87171':f<30?'#fbbf24':'#34d399' })
+    const presetsOf = computed(() => (fetchers.value.find(f=>f.name===wizard.fetcher)?.presets)||[])
+
+    async function api(path, opts) {
+      const r = await fetch('/api'+path, opts)
+      if (!r.ok) { let d; try{ d=await r.json() }catch{}; throw new Error(d?.detail || (r.status+' '+r.statusText)) }
+      return r.json()
+    }
+    async function run(fn) { err.value=''; busy.value=true; try { await fn() } catch(e){ err.value=String(e.message||e) } finally { busy.value=false } }
+
+    async function checkHealth() {
+      try { const r = await fetch('/health'); odmStatus.value = r.ok ? 'online':'offline' } catch { odmStatus.value='offline' }
+      try { const d = await api('/system/info'); ram.total=d.ram_total_mb; ram.avail=d.ram_available_mb } catch {}
+    }
+    async function loadStatus() { try { const d = await api('/status'); Object.assign(status,d); odmStatus.value = d.odm==='online'?'online':'offline' } catch(e){ odmStatus.value='offline' } }
+
+    const loaders = {
+      fuentes: async () => { const c = await api('/catalog'); Object.assign(catalog, c) },
+      suscripciones: async () => { subscriptions.value = await api('/odm/subscriptions') },
+      datos: async () => { resources.value = await api('/odm/resources'); executions.value = await api('/odm/executions') },
+      entregas: async () => { notifications.value = await api('/odm/notifications') },
+    }
+    function go(id) { view.value = id; result.value=null; if (loaders[id]) run(loaders[id]) }
+
+    // acciones
+    function provision(dry) { run(async () => { result.value = await api('/sources/provision', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dry_run:dry})}) }) }
+    function doBootstrap(dry) { run(async () => { result.value = await api('/bootstrap', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dry_run:dry})}) }) }
+    function refrescar(rid) { run(async () => { result.value = await api('/odm/execute', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid})}); await loaders.datos() }) }
+    async function loadFetchers() { try { fetchers.value = await api('/odm/fetchers') } catch(e){ err.value=String(e.message||e) } }
+    function getTemplate() { run(async () => { wizard.template = await api('/odm/manifest-template', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fetcherCode:wizard.fetcher, presetCode:wizard.preset||null})}) }) }
+
+    onMounted(() => {
+      checkHealth(); loadStatus(); loadFetchers()
+      api('/version').then(d=>appVersion.value=d.version).catch(()=>{})
+      setInterval(() => { checkHealth(); loadStatus() }, 15000)
+    })
+
+    return { view, nav, odmStatus, appVersion, ram, ramPct, ramColor, status, err, busy,
+             catalog, resources, subscriptions, executions, notifications, fetchers, wizard, presetsOf, result,
+             go, provision, doBootstrap, refrescar, getTemplate }
+  },
+  template: `
+  <!-- Sidebar -->
+  <div class="w-64 h-full bg-gray-800 border-r border-gray-700 flex flex-col flex-shrink-0">
+    <div class="p-5 border-b border-gray-700">
+      <h1 class="text-lg font-bold text-blue-400 leading-tight">ckan-jerez</h1>
+      <p class="text-xs text-gray-400 mt-0.5">Suscriptor de OpenDataManager</p>
+      <p v-if="appVersion" class="text-xs text-gray-600 mt-0.5">build {{ appVersion }}</p>
+    </div>
+    <nav class="flex-1 p-3 space-y-0.5 overflow-y-auto">
+      <div v-for="n in nav" :key="n.id" class="nav-item" :class="{active: view===n.id}" @click="go(n.id)">{{ n.label }}</div>
+    </nav>
+    <div class="p-4 border-t border-gray-700 space-y-3">
+      <div class="flex items-center justify-between text-xs text-gray-500">
+        <span>ODM</span>
+        <span class="flex items-center gap-1.5">
+          <span class="inline-flex h-2 w-2 rounded-full" :style="{background: odmStatus==='online'?'#34d399':odmStatus==='offline'?'#ef4444':'#fbbf24'}"></span>
+          <span :style="{color: odmStatus==='online'?'#34d399':odmStatus==='offline'?'#f87171':'#fbbf24'}">{{ odmStatus }}</span>
+        </span>
+      </div>
+      <div class="flex items-center justify-between text-xs text-gray-500">
+        <span>CKAN</span><span :style="{color: status.ckan_configured?'#34d399':'#6b7280'}">{{ status.ckan_configured ? 'configurado' : 'sin configurar' }}</span>
+      </div>
+      <div v-if="ram.total>0">
+        <div class="flex items-center justify-between text-xs mb-1"><span class="text-gray-500">RAM</span><span :style="{color:ramColor}" class="tabular-nums">{{ (ram.avail/1024).toFixed(1) }} / {{ (ram.total/1024).toFixed(1) }} GB</span></div>
+        <div class="h-1.5 bg-gray-700 rounded-full overflow-hidden"><div class="h-full rounded-full" :style="{width:(100-ramPct)+'%', background:ramColor}"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="flex-1 overflow-y-auto p-6">
+    <div v-if="err" class="card border-red-700 bg-red-900/40 text-red-200 px-4 py-2.5 mb-4 text-sm">⚠️ {{ err }}</div>
+
+    <!-- Dashboard -->
+    <div v-if="view==='dashboard'">
+      <h2 class="text-xl font-bold text-gray-100 mb-1">Dashboard</h2>
+      <p class="text-sm text-gray-400 mb-5">Consola de operador del suscriptor. ckan-jerez homogeneiza los datos de ODM en un CKAN/DCAT uniforme.</p>
+      <div class="grid grid-cols-3 gap-4 mb-6">
+        <div class="card p-4"><div class="text-xs text-gray-500 mb-1">ODM</div><div class="text-lg" :style="{color: odmStatus==='online'?'#34d399':'#f87171'}">{{ odmStatus }}</div></div>
+        <div class="card p-4"><div class="text-xs text-gray-500 mb-1">CKAN</div><div class="text-lg">{{ status.ckan_configured ? 'configurado' : 'sin configurar' }}</div></div>
+        <div class="card p-4"><div class="text-xs text-gray-500 mb-1">Application</div><div class="text-sm truncate">{{ status.application || '—' }}</div></div>
+      </div>
+      <div class="card p-5">
+        <h3 class="text-sm font-semibold text-gray-200 mb-3">Aprovisionamiento y bootstrap</h3>
+        <div class="flex flex-wrap gap-2">
+          <button class="btn btn-ghost" :disabled="busy" @click="provision(true)">Previsualizar provisioning</button>
+          <button class="btn btn-primary" :disabled="busy" @click="provision(false)">Aprovisionar (aplicar)</button>
+          <button class="btn btn-ghost" :disabled="busy" @click="doBootstrap(true)">Bootstrap (dry-run)</button>
+          <button class="btn btn-primary" :disabled="busy" @click="doBootstrap(false)">Bootstrap (aplicar)</button>
+        </div>
+        <pre v-if="result" class="mt-4">{{ JSON.stringify(result, null, 2) }}</pre>
+      </div>
+    </div>
+
+    <!-- Fuentes -->
+    <div v-else-if="view==='fuentes'">
+      <h2 class="text-xl font-bold text-gray-100 mb-1">Fuentes</h2>
+      <p class="text-sm text-gray-400 mb-5">Catálogo heterogéneo (varios publishers, varios fetchers). Particularizado con params.</p>
+      <div class="card p-5 mb-6">
+        <h3 class="text-sm font-semibold text-gray-200 mb-3">Catálogo declarado</h3>
+        <table class="w-full"><thead><tr><th>Nombre</th><th>Publisher</th><th>Fetcher</th><th>Preset</th></tr></thead>
+          <tbody><tr v-for="s in catalog.sources" :key="s.name">
+            <td class="text-gray-200">{{ s.name }}</td><td>{{ (catalog.publishers[s.publisher]||{}).nombre || s.publisher }}</td>
+            <td><span class="pill bg-gray-700 text-gray-200">{{ s.fetcher }}</span></td><td class="text-gray-400">{{ s.preset || '—' }}</td>
+          </tr></tbody></table>
+      </div>
+      <div class="card p-5">
+        <h3 class="text-sm font-semibold text-gray-200 mb-3">Nueva fuente (asistente)</h3>
+        <div class="flex flex-wrap items-end gap-3">
+          <label class="text-xs text-gray-400">Fetcher
+            <select v-model="wizard.fetcher" @change="wizard.preset=''" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+              <option value="">—</option><option v-for="f in fetchers" :key="f.id" :value="f.name">{{ f.name }}</option></select></label>
+          <label class="text-xs text-gray-400">Variante (preset)
+            <select v-model="wizard.preset" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+              <option value="">(ninguna)</option><option v-for="p in presetsOf" :key="p.id" :value="p.code">{{ p.code }}</option></select></label>
+          <button class="btn btn-primary" :disabled="busy || !wizard.fetcher" @click="getTemplate">Obtener plantilla</button>
+        </div>
+        <p class="text-xs text-gray-500 mt-2">La plantilla viene de ODM (manifestTemplate). Rellena publisher + params y se importa idempotente.</p>
+        <pre v-if="wizard.template" class="mt-3">{{ JSON.stringify(wizard.template, null, 2) }}</pre>
+      </div>
+    </div>
+
+    <!-- Suscripciones -->
+    <div v-else-if="view==='suscripciones'">
+      <h2 class="text-xl font-bold text-gray-100 mb-1">Suscripciones</h2>
+      <p class="text-sm text-gray-400 mb-5">Recursos a los que está suscrita esta Application (push por webhook).</p>
+      <div class="card p-5">
+        <table class="w-full"><thead><tr><th>Resource</th><th>auto_upgrade</th><th>pinned</th><th>versión actual</th><th>notificado</th></tr></thead>
+          <tbody><tr v-for="s in subscriptions" :key="s.id">
+            <td class="text-gray-300">{{ s.resourceId }}</td><td><span class="pill bg-blue-900 text-blue-300">{{ s.autoUpgrade }}</span></td>
+            <td>{{ s.pinnedVersion || '—' }}</td><td>{{ s.currentVersion || '—' }}</td><td class="text-gray-500">{{ s.notifiedAt || '—' }}</td>
+          </tr><tr v-if="!subscriptions.length"><td colspan="5" class="text-gray-500">Sin suscripciones.</td></tr></tbody></table>
+      </div>
+    </div>
+
+    <!-- Datos -->
+    <div v-else-if="view==='datos'">
+      <h2 class="text-xl font-bold text-gray-100 mb-1">Datos / Refresco</h2>
+      <p class="text-sm text-gray-400 mb-5">Recursos en ODM y sus ejecuciones. «Refrescar» dispara una ejecución.</p>
+      <pre v-if="result" class="mb-4">{{ JSON.stringify(result, null, 2) }}</pre>
+      <div class="card p-5 mb-6">
+        <h3 class="text-sm font-semibold text-gray-200 mb-3">Recursos</h3>
+        <table class="w-full"><thead><tr><th>Nombre</th><th>Publisher</th><th></th></tr></thead>
+          <tbody><tr v-for="r in resources" :key="r.id">
+            <td class="text-gray-200">{{ r.name }}</td><td class="text-gray-400">{{ r.publisher || '—' }}</td>
+            <td class="text-right"><button class="btn btn-ghost" :disabled="busy" @click="refrescar(r.id)">Refrescar</button></td>
+          </tr><tr v-if="!resources.length"><td colspan="3" class="text-gray-500">Sin recursos.</td></tr></tbody></table>
+      </div>
+      <div class="card p-5">
+        <h3 class="text-sm font-semibold text-gray-200 mb-3">Ejecuciones recientes</h3>
+        <table class="w-full"><thead><tr><th>Recurso</th><th>Estado</th><th>Inicio</th><th>Registros</th></tr></thead>
+          <tbody><tr v-for="e in executions" :key="e.id">
+            <td>{{ e.resourceName || e.resourceId }}</td>
+            <td><span class="pill" :style="{background: e.status==='completed'?'#064e3b':e.status==='failed'?'#7f1d1d':'#374151', color: e.status==='completed'?'#34d399':e.status==='failed'?'#f87171':'#cbd5e1'}">{{ e.status }}</span></td>
+            <td class="text-gray-500">{{ e.startedAt }}</td><td>{{ e.recordsLoaded ?? e.totalRecords ?? '—' }}</td>
+          </tr><tr v-if="!executions.length"><td colspan="4" class="text-gray-500">Sin ejecuciones.</td></tr></tbody></table>
+      </div>
+    </div>
+
+    <!-- Entregas -->
+    <div v-else-if="view==='entregas'">
+      <h2 class="text-xl font-bold text-gray-100 mb-1">Entregas</h2>
+      <p class="text-sm text-gray-400 mb-5">Auditoría de los webhooks que ODM ha entregado a esta Application.</p>
+      <div class="card p-5">
+        <table class="w-full"><thead><tr><th>Enviado</th><th>Dataset</th><th>HTTP</th><th>Error</th></tr></thead>
+          <tbody><tr v-for="n in notifications" :key="n.id">
+            <td class="text-gray-500">{{ n.sentAt }}</td><td>{{ n.datasetId || '—' }}</td>
+            <td><span class="pill" :style="{background: n.statusCode>=200&&n.statusCode<300?'#064e3b':'#7f1d1d', color: n.statusCode>=200&&n.statusCode<300?'#34d399':'#f87171'}">{{ n.statusCode || '—' }}</span></td>
+            <td class="text-red-300">{{ n.errorMessage || '' }}</td>
+          </tr><tr v-if="!notifications.length"><td colspan="4" class="text-gray-500">Sin entregas.</td></tr></tbody></table>
+      </div>
+    </div>
+  </div>
+  `
+}).mount('#app')
+</script>
+</body>
+</html>

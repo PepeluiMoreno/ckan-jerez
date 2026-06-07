@@ -346,3 +346,7 @@ class OdmClient:
         """Lista suscripciones (para no resuscribir lo ya suscrito)."""
         return self.execute(Q_DATASET_SUBSCRIPTIONS,
                             {"appId": application_id, "resourceId": resource_id})["datasetSubscriptions"]
+
+    def fetchers(self) -> list[dict]:
+        """Lista fetchers con sus presets (para el asistente 'nueva fuente')."""
+        return self.execute(Q_FETCHERS)["fetchers"]

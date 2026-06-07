@@ -8,7 +8,8 @@ Convención: `[ ]` pendiente · `[x]` hecho · `[-]` descartado.
 
 ## Pendiente
 
-- [ ] **Páginas de operador** (HTML sobre el FastAPI): Fuentes (asistente nueva-fuente), Suscripciones, Datos/Refresco, Entregas.
+- [ ] **Auth del panel de operador**: las acciones (provision/execute/bootstrap) tocan ODM; el panel debe ir tras autenticación/VPN antes de exponerse.
+- [ ] Asistente *nueva fuente*: completar el ciclo (rellenar la plantilla + importar), hoy solo previsualiza la plantilla.
 - [ ] Retirar el crawler heredado (`scripts/jerez_webtree.py`) ahora que la definición va por manifiesto y la ingesta por webhook.
 - [ ] **Orquestar el ciclo completo desde ckan-jerez**: crear el crawler →
   `discover` → revisar candidatos → `promote_candidate` aplicando la *política de
@@ -35,6 +36,7 @@ Convención: `[ ]` pendiente · `[x]` hecho · `[-]` descartado.
 
 ## Hecho
 
+- [x] **Panel de operador (SPA)** con el *look & feel* de ODM (Vue 3 + Tailwind por CDN, tema oscuro, sidebar, JetBrains Mono): vistas Dashboard, Fuentes (catálogo + asistente *nueva fuente* sobre `manifestTemplate`), Suscripciones, Datos/Refresco y Entregas. Servida por el FastAPI en `/`, alimentada por `api/admin.py` (envuelve odm_client/provisioning/bootstrap). 28 tests verdes.
 - [x] **Bootstrap del suscriptor** (`services/bootstrap.py` + `app/bootstrap_cli.py`): cierra el lazo entrada↔salida — aprovisiona el catálogo, asegura la Application (find-or-create) y su webhook (`set_application_webhook`), resuelve IDs por (publisher, name) y suscribe los recursos que falten (`subscribe_resource`), todo idempotente. Comando `bootstrap [--apply]` (dry-run por defecto). Cliente ampliado con `applications`/`resources`/`dataset_subscriptions`. 28 tests verdes.
 - [x] **Salida homogénea (REST-apificador)**: `services/ckan_publisher.py` mapea
   cualquier dataset de ODM a un *package* CKAN con metadatos DCAT (distribuciones
