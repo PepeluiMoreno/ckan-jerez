@@ -1,0 +1,3 @@
+# Dependencias de desarrollo/pruebas (no van en la imagen de runtime).
+graphql-core>=3.2,<4.0   # validar documentos/inputs contra el esquema de ODM
+pytest>=8.0,<9.0

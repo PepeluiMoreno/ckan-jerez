@@ -81,6 +81,11 @@ rescata para no perderlo:
 con él por su frontera pública: **GraphQL** para definir recursos y consultar
 datos, y **webhook** para recibir las notificaciones de carga.
 
+**Autenticación.** El cliente opera con una **cuenta de servicio** de ODM dotada
+de un rol de mínimo privilegio (`recursos.crear`, `recursos.editar` y lectura).
+Se autentica en `/api/auth/login` y reutiliza la cookie de sesión, re-autenticando
+ante un error de permiso. (`services/odm_client.py`.)
+
 ### 4.1. Declaración de recursos
 
 `data/odm_resources/jerez.json` declara lo que ODM debe cosechar; `ckan-jerez`
