@@ -33,6 +33,9 @@ class _FakeClient:
         self._subs = list(subs or [])
         self.calls = {"create_application": 0, "set_webhook": [], "subscribed": [], "imported": 0}
 
+    def publishers(self):
+        return [{"id": "ent-1", "acronimo": "AJFRA", "nombre": "Ayuntamiento de Jerez de la Frontera"}]
+
     # provisioning
     def import_manifest(self, manifest):
         self.calls["imported"] += 1
@@ -134,8 +137,10 @@ def test_adopcion_suscribe_recursos_heredados_del_publisher():
         {"id": "r1", "name": "Jerez — PMP mensual (receta)", "publisher": "Ayuntamiento de Jerez de la Frontera"},
         {"id": "r2", "name": "Jerez — Deuda anual (heredado)", "publisher": "AJFRA"},       # por acrónimo
         {"id": "r3", "name": "Otro publisher", "publisher": "DIPUCADIZ"},
+        {"id": "r4", "name": "Jerez — Censo heredado", "publisher": None, "publisherId": "ent-1"},  # por ENTIDAD
     ]
     cli = _FakeClient(resources=recursos)
     ids = resolve_resource_ids(cli, catalogo)
     assert ids == {"Jerez — PMP mensual (receta)": "r1",
-                   "Jerez — Deuda anual (heredado)": "r2"}      # adopta heredado, ignora ajeno
+                   "Jerez — Deuda anual (heredado)": "r2",
+                   "Jerez — Censo heredado": "r4"}              # adopta por texto Y por entidad

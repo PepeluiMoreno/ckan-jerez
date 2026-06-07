@@ -108,6 +108,9 @@ Q_APP_NOTIFICATIONS = (
     "}"
 )
 
+Q_PUBLISHERS = (
+    "query Pubs { publishers { id nombre acronimo nivel } }"
+)
 M_UNSUBSCRIBE_RESOURCE = (
     "mutation Desuscribir($id: String!) { unsubscribeResource(id: $id) }"
 )
@@ -358,6 +361,11 @@ class OdmClient:
         """Borra un recurso en ODM (soft por defecto). ODM lo rechaza si tiene
         suscripciones activas (guardia de integridad)."""
         return self.execute(M_DELETE_RESOURCE, {"id": resource_id, "hard": hard})["deleteResource"]
+
+    def publishers(self) -> list[dict]:
+        """Lista las entidades publisher (id, nombre, acrónimo) para resolver
+        los recursos cuyo campo de texto publisher está vacío."""
+        return self.execute(Q_PUBLISHERS)["publishers"]
 
     def fetchers(self) -> list[dict]:
         """Lista fetchers con sus presets (para el asistente 'nueva fuente')."""

@@ -54,8 +54,17 @@ def resolve_resource_ids(client: OdmClient, catalog: dict) -> dict:
             nombre = (publishers.get(acro) or {}).get("nombre")
             if nombre:
                 alias.add(nombre)
+        ent_ids = set()                            # y la ENTIDAD publisher (muchos
+        try:                                       # heredados tienen el texto vacío)
+            for p in client.publishers():
+                if p.get("acronimo") in alias or p.get("nombre") in alias:
+                    ent_ids.add(p["id"])
+        except Exception:  # noqa: BLE001
+            pass
         for r in recursos:
-            if r.get("publisher") in alias and r.get("name") not in ids:
+            if r.get("name") in ids:
+                continue
+            if r.get("publisher") in alias or (r.get("publisherId") and r["publisherId"] in ent_ids):
                 ids[r["name"]] = r["id"]
     return ids
 

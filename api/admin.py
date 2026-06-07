@@ -104,7 +104,17 @@ def catalog() -> dict:
 # ── Lecturas de ODM ───────────────────────────────────────────────────────────
 @router.get("/odm/resources")
 def odm_resources() -> Any:
-    return _odm(lambda c: c.resources())
+    def _con_publisher(c):
+        rs = c.resources()
+        try:
+            ents = {p["id"]: (p.get("acronimo") or p.get("nombre")) for p in c.publishers()}
+        except Exception:  # noqa: BLE001
+            ents = {}
+        for r in rs:
+            if not r.get("publisher") and r.get("publisherId"):
+                r["publisher"] = ents.get(r["publisherId"]) or None
+        return rs
+    return _odm(_con_publisher)
 
 
 @router.get("/odm/fetchers")
