@@ -49,6 +49,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     env:
       CKANJEREZ_ENV_PRODUCTION: ${{ secrets.CKANJEREZ_ENV_PRODUCTION }}
 
@@ -61,6 +64,7 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           envs: CKANJEREZ_ENV_PRODUCTION
           script: |
+            set -e
             APP_DIR=/opt/docker/apps/ckan-jerez
             if [ ! -d "$APP_DIR/.git" ]; then
               if ! ( mkdir -p "$APP_DIR" 2>/dev/null && [ -w "$APP_DIR" ] ); then
