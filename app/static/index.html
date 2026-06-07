@@ -250,8 +250,8 @@ createApp({
       <div class="stline"><span>Sincronización</span>
         <span :style="{color: (status.sync&&status.sync.last_ok)?'#34d399':'#fbbf24'}" :title="(status.sync&&status.sync.last_error)||''">{{ syncLabel }}</span></div>
       <div v-if="ram.total>0">
-        <div class="stline mb-1"><span>RAM libre</span><span :style="{color:ramColor}" class="tabular-nums">{{ (ram.avail/1024).toFixed(1) }} / {{ (ram.total/1024).toFixed(1) }} GB</span></div>
-        <div class="h-1.5 bg-gray-700 rounded-full overflow-hidden"><div class="h-full rounded-full" :style="{width:(100-ramPct)+'%', background:ramColor}"></div></div>
+        <div class="stline mb-1"><span>RAM consumida</span><span :style="{color:ramColor}" class="tabular-nums">{{ ((ram.total-ram.avail)/1024).toFixed(1) }} / {{ (ram.total/1024).toFixed(1) }} GB</span></div>
+        <div class="h-1.5 bg-gray-700 rounded-full overflow-hidden"><div class="h-full rounded-full" :style="{width:ramPct+'%', background:ramColor}"></div></div>
       </div>
       <div v-if="appVersion" class="text-xs text-gray-600">build {{ appVersion }}</div>
     </div>
