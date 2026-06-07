@@ -106,7 +106,13 @@ def odm_fetchers() -> Any:
 
 @router.get("/odm/subscriptions")
 def odm_subscriptions() -> Any:
-    return _odm(lambda c: c.dataset_subscriptions(application_id=_app_id(c)))
+    def _con_nombres(c):
+        subs = c.dataset_subscriptions(application_id=_app_id(c))
+        nombres = {r["id"]: r.get("name") for r in c.resources()}
+        for s in subs:
+            s["resourceName"] = nombres.get(s.get("resourceId")) or s.get("resourceId")
+        return subs
+    return _odm(_con_nombres)
 
 
 @router.get("/odm/executions")

@@ -190,7 +190,7 @@ createApp({
       <div class="card p-5">
         <table class="w-full"><thead><tr><th>Resource</th><th>auto_upgrade</th><th>pinned</th><th>versión actual</th><th>notificado</th></tr></thead>
           <tbody><tr v-for="s in subscriptions" :key="s.id">
-            <td class="text-gray-300">{{ s.resourceId }}</td><td><span class="pill bg-blue-900 text-blue-300">{{ s.autoUpgrade }}</span></td>
+            <td class="text-gray-200" :title="s.resourceId">{{ s.resourceName || s.resourceId }}</td><td><span class="pill bg-blue-900 text-blue-300">{{ s.autoUpgrade }}</span></td>
             <td>{{ s.pinnedVersion || '—' }}</td><td>{{ s.currentVersion || '—' }}</td><td class="text-gray-500">{{ s.notifiedAt || '—' }}</td>
           </tr><tr v-if="!subscriptions.length"><td colspan="5" class="text-gray-500">Sin suscripciones.</td></tr></tbody></table>
       </div>
