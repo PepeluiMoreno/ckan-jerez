@@ -107,7 +107,10 @@ def odm_fetchers() -> Any:
 @router.get("/odm/subscriptions")
 def odm_subscriptions() -> Any:
     def _con_nombres(c):
-        subs = c.dataset_subscriptions(application_id=_app_id(c))
+        app_id = _app_id(c)
+        if not app_id:
+            return []                       # sin Application aún: nada nuestro que listar
+        subs = c.dataset_subscriptions(application_id=app_id)
         nombres = {r["id"]: r.get("name") for r in c.resources()}
         for s in subs:
             s["resourceName"] = nombres.get(s.get("resourceId")) or s.get("resourceId")
@@ -122,7 +125,10 @@ def odm_executions(resource_id: Optional[str] = None) -> Any:
 
 @router.get("/odm/notifications")
 def odm_notifications() -> Any:
-    return _odm(lambda c: c.application_notifications(application_id=_app_id(c)))
+    def _solo_nuestras(c):
+        app_id = _app_id(c)
+        return c.application_notifications(application_id=app_id) if app_id else []
+    return _odm(_solo_nuestras)
 
 
 # ── Acciones (escritura) ──────────────────────────────────────────────────────
