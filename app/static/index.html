@@ -244,7 +244,7 @@ createApp({
         <span :style="{color: status.odm==='online'?'#34d399':'#f87171'}">● {{ status.odm }}</span></div>
       <div class="stline"><span>CKAN</span>
         <span :style="{color: status.ckan_configured?'#34d399':'#6b7280'}">{{ status.ckan_configured ? 'configurado' : 'sin configurar' }}</span></div>
-      <div class="stline"><span>Application</span>
+      <div class="stline"><span>Registro en ODM</span>
         <span v-if="status.application" style="color:#34d399" :title="'webhook: '+(status.webhook_url||'—')">✓ registrada</span>
         <span v-else style="color:#fbbf24" :title="(status.config_missing||[]).length ? 'faltan: '+status.config_missing.join(', ') : 'pendiente'">✗ pendiente</span></div>
       <div class="stline"><span>Sincronización</span>
