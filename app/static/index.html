@@ -177,8 +177,14 @@ createApp({
     function pickPub() {
       const k = wizard.form.pub
       if (k && catalog.publishers[k]) wizard.form.publisher = {acronimo:k, ...catalog.publishers[k]}
+      else if (k && k.startsWith('odm:')) { const n = k.slice(4); wizard.form.publisher = {acronimo:n, nombre:n} }
       else wizard.form.publisher = {acronimo:'',nombre:'',nivel:'MUNICIPAL',pais:'España',portal_url:''}
     }
+    const pubsOdmExtra = computed(() => {
+      const conocidos = new Set()
+      for (const [k,v] of Object.entries(catalog.publishers||{})) { conocidos.add(k); if (v.nombre) conocidos.add(v.nombre) }
+      return pubsDisponibles.value.filter(p => !conocidos.has(p))
+    })
     function addParam() { wizard.form.params.push({key:'', value:''}) }
     function delParam(i) { wizard.form.params.splice(i,1) }
     function _payload(dry) {
@@ -204,7 +210,7 @@ createApp({
 
     return { view, nav, odmStatus, appVersion, ram, ramPct, ramColor, status, err, busy,
              catalog, resources, subscriptions, executions, notifications, fetchers, wizard, presetsOf, result,
-             go, sync, sincronizar, refrescar, filtros, modal, lastOk, pubsDisponibles, recursosFiltrados, fmtAgo, subByResource, suscribir, desuscribir, borrarRecurso, nameToId, getTemplate, enOdm, pickPub, addParam, delParam, previewSource, createSource }
+             go, sync, sincronizar, refrescar, filtros, modal, lastOk, pubsDisponibles, recursosFiltrados, fmtAgo, subByResource, suscribir, desuscribir, borrarRecurso, nameToId, pubsOdmExtra, getTemplate, enOdm, pickPub, addParam, delParam, previewSource, createSource }
   },
   template: `
   <!-- Sidebar -->
@@ -303,7 +309,12 @@ createApp({
             <label class="text-xs text-gray-400">Publisher
               <select v-model="wizard.form.pub" @change="pickPub" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
                 <option value="">— nuevo —</option>
-                <option v-for="(v,k) in catalog.publishers" :key="k" :value="k">{{ v.nombre || k }}</option>
+                <optgroup label="Del catálogo">
+                  <option v-for="(v,k) in catalog.publishers" :key="k" :value="k">{{ v.nombre || k }}</option>
+                </optgroup>
+                <optgroup label="Ya en ODM" v-if="pubsOdmExtra.length">
+                  <option v-for="p in pubsOdmExtra" :key="p" :value="'odm:'+p">{{ p }}</option>
+                </optgroup>
               </select></label>
             <label class="text-xs text-gray-400">Nombre del recurso
               <input v-model="wizard.form.name" placeholder="Jerez — …" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
