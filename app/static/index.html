@@ -63,6 +63,34 @@ createApp({
     })
     const result = ref(null)
 
+    const filtros = reactive({ q:'', pub:'', soloSus:false })
+    const modal = reactive({ open:false, titulo:'', texto:'' })
+    const lastOk = computed(() => {
+      const m = {}
+      for (const e of executions.value) {
+        if (e.status==='completed' && e.completedAt) {
+          if (!m[e.resourceId] || e.completedAt > m[e.resourceId]) m[e.resourceId] = e.completedAt
+        }
+      }
+      return m
+    })
+    const pubsDisponibles = computed(() => [...new Set(resources.value.map(r=>r.publisher).filter(Boolean))].sort())
+    const recursosFiltrados = computed(() => {
+      const subIds = new Set(subscriptions.value.map(s=>s.resourceId))
+      return resources.value.filter(r =>
+        (!filtros.q || (r.name||'').toLowerCase().includes(filtros.q.toLowerCase()) || (r.publisher||'').toLowerCase().includes(filtros.q.toLowerCase())) &&
+        (!filtros.pub || r.publisher === filtros.pub) &&
+        (!filtros.soloSus || subIds.has(r.id)))
+    })
+    function fmtAgo(iso) {
+      if (!iso) return '—'
+      const mins = Math.floor((Date.now() - new Date(iso+(iso.endsWith('Z')?'':'Z')).getTime())/60000)
+      if (mins < 0) return iso
+      if (mins < 60) return `hace ${mins} min`
+      if (mins < 1440) return `hace ${Math.floor(mins/60)} h`
+      return `hace ${Math.floor(mins/1440)} d`
+    }
+    function minsDesde(iso) { return iso ? Math.floor((Date.now() - new Date(iso+(iso.endsWith('Z')?'':'Z')).getTime())/60000) : null }
     const ramPct = computed(() => ram.total ? Math.round((1 - ram.avail/ram.total)*100) : 0)
     const ramColor = computed(() => { const f=100-ramPct.value; return f<15?'#f87171':f<30?'#fbbf24':'#34d399' })
     const presetsOf = computed(() => (fetchers.value.find(f=>f.name===wizard.fetcher)?.presets)||[])
@@ -84,7 +112,8 @@ createApp({
       fuentes: async () => { const c = await api('/catalog'); Object.assign(catalog, c);
         try { resources.value = await api('/odm/resources') } catch {} },
       suscripciones: async () => { subscriptions.value = await api('/odm/subscriptions') },
-      datos: async () => { resources.value = await api('/odm/resources'); executions.value = await api('/odm/executions') },
+      datos: async () => { resources.value = await api('/odm/resources'); executions.value = await api('/odm/executions');
+        try { subscriptions.value = await api('/odm/subscriptions') } catch {} },
       entregas: async () => { notifications.value = await api('/odm/notifications') },
     }
     function go(id) { view.value = id; result.value=null; if (loaders[id]) run(loaders[id]) }
@@ -99,7 +128,20 @@ createApp({
       sync.detail = out
       await loadStatus()
     }) }
-    function refrescar(rid) { run(async () => { result.value = await api('/odm/execute', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid})}); await loaders.datos() }) }
+    function refrescar(rid) {
+      const m = minsDesde(lastOk.value[rid])
+      if (m !== null && m < 60) {
+        modal.open = true; modal.titulo = 'Refresco rechazado'
+        modal.texto = `Este recurso se ejecutó con éxito hace ${m} min. Para no abusar del proveedor, se admite un refresco por hora (y ODM también lo rechazaría).`
+        return
+      }
+      run(async () => {
+        const out = await api('/odm/execute', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid})})
+        if (out && out.success === false) { modal.open=true; modal.titulo='ODM rechazó el refresco'; modal.texto = out.message || 'Rechazado.' }
+        else { result.value = out }
+        await loaders.datos()
+      })
+    }
     async function loadFetchers() { try { fetchers.value = await api('/odm/fetchers') } catch(e){ err.value=String(e.message||e) } }
     function getTemplate() { run(async () => {
       wizard.manifest=null; wizard.done=null
@@ -141,7 +183,7 @@ createApp({
 
     return { view, nav, odmStatus, appVersion, ram, ramPct, ramColor, status, err, busy,
              catalog, resources, subscriptions, executions, notifications, fetchers, wizard, presetsOf, result,
-             go, sync, sincronizar, refrescar, getTemplate, enOdm, pickPub, addParam, delParam, previewSource, createSource }
+             go, sync, sincronizar, refrescar, filtros, modal, lastOk, pubsDisponibles, recursosFiltrados, fmtAgo, getTemplate, enOdm, pickPub, addParam, delParam, previewSource, createSource }
   },
   template: `
   <!-- Sidebar -->
@@ -304,12 +346,22 @@ createApp({
       <p class="text-sm text-gray-400 mb-5">Estado de los recursos en ODM y sus ejecuciones. «Refrescar» dispara una ejecución.</p>
       <pre v-if="result" class="mb-4">{{ JSON.stringify(result, null, 2) }}</pre>
       <div class="card p-5 mb-6">
-        <h3 class="text-sm font-semibold text-gray-200 mb-3">Recursos en ODM</h3>
-        <table class="w-full"><thead><tr><th>Nombre</th><th>Publisher</th><th></th></tr></thead>
-          <tbody><tr v-for="r in resources" :key="r.id">
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+          <input v-model="filtros.q" placeholder="Buscar por nombre o publisher…" class="flex-1 min-w-64 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200">
+          <select v-model="filtros.pub" class="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+            <option value="">Publisher: todos</option>
+            <option v-for="p in pubsDisponibles" :key="p" :value="p">{{ p }}</option>
+          </select>
+          <label class="text-xs text-gray-400 flex items-center gap-1.5">
+            <input type="checkbox" v-model="filtros.soloSus"> solo suscritos</label>
+          <span class="text-xs text-gray-500 ml-auto">{{ recursosFiltrados.length }} / {{ resources.length }}</span>
+        </div>
+        <table class="w-full"><thead><tr><th>Nombre</th><th>Publisher</th><th>Última ejecución OK</th><th></th></tr></thead>
+          <tbody><tr v-for="r in recursosFiltrados" :key="r.id">
             <td class="text-gray-200">{{ r.name }}</td><td class="text-gray-400">{{ r.publisher || '—' }}</td>
+            <td :class="(lastOk[r.id] && (Date.now()-new Date(lastOk[r.id]+'Z').getTime())<3600000) ? 'text-green-400' : 'text-gray-500'">{{ fmtAgo(lastOk[r.id]) }}</td>
             <td class="text-right"><button class="btn btn-ghost" :disabled="busy" @click="refrescar(r.id)">Refrescar</button></td>
-          </tr><tr v-if="!resources.length"><td colspan="3" class="text-gray-500">Sin recursos.</td></tr></tbody></table>
+          </tr><tr v-if="!recursosFiltrados.length"><td colspan="4" class="text-gray-500">Sin recursos con ese filtro.</td></tr></tbody></table>
       </div>
       <div class="card p-5">
         <h3 class="text-sm font-semibold text-gray-200 mb-3">Ejecuciones recientes</h3>
@@ -334,6 +386,15 @@ createApp({
             <td class="text-red-300">{{ n.errorMessage || '' }}</td>
           </tr><tr v-if="!notifications.length"><td colspan="4" class="text-gray-500">Sin entregas.</td></tr></tbody></table>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div v-if="modal.open" class="fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,.6)" @click.self="modal.open=false">
+    <div class="card p-5 w-full max-w-md mx-4">
+      <h3 class="text-sm font-semibold text-yellow-400 mb-2">⚠️ {{ modal.titulo }}</h3>
+      <p class="text-sm text-gray-300">{{ modal.texto }}</p>
+      <div class="mt-4 text-right"><button class="btn btn-primary" @click="modal.open=false">Entendido</button></div>
     </div>
   </div>
   `
