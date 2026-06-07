@@ -14,7 +14,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from services.odm_client import (  # noqa: E402
-    M_CREATE_RESOURCE, Q_FETCHERS, build_resource_input,
+    M_CREATE_RESOURCE, M_DELETE_RESOURCE, M_EXECUTE_RESOURCE, M_PROMOTE_CANDIDATE,
+    Q_FETCHERS, Q_RESOURCE_CANDIDATES, build_resource_input,
 )
 
 SCHEMA = build_schema((ROOT / "tests/fixtures/odm_schema.graphql").read_text())
@@ -57,6 +58,18 @@ def test_jerez_json_genera_inputs_validos_para_las_tres_variantes():
         assert not errs, f"{d['name']}: {errs}"
 
 
+def test_documentos_discovery_validos_contra_el_esquema():
+    for doc in (M_EXECUTE_RESOURCE, Q_RESOURCE_CANDIDATES, M_PROMOTE_CANDIDATE, M_DELETE_RESOURCE):
+        errors = validate(SCHEMA, parse(doc))
+        assert not errors, f"documento de discovery inválido contra el esquema de ODM: {errors}"
+
+
+def test_promote_input_conforme_al_esquema():
+    inp = {"name": "Jerez — PMP mensual", "targetTable": "jerez_pmp_mensual",
+           "enableLoad": True, "loadMode": "upsert", "variant": "Extracción con receta"}
+    assert not _coerce_errors(inp, "PromoteCandidateInput")
+
+
 if __name__ == "__main__":
     test_documentos_validos_contra_el_esquema_de_odm()
     print("[OK] Q_FETCHERS y M_CREATE_RESOURCE validan contra el esquema real de ODM")
@@ -64,4 +77,8 @@ if __name__ == "__main__":
     print("[OK] variables de createResource conformes a CreateResourceInput")
     test_jerez_json_genera_inputs_validos_para_las_tres_variantes()
     print("[OK] jerez.json genera inputs válidos para censo/datos/receta")
+    test_documentos_discovery_validos_contra_el_esquema()
+    print("[OK] discovery (executeResource, resourceCandidates, promoteCandidate, deleteResource) validan")
+    test_promote_input_conforme_al_esquema()
+    print("[OK] PromoteCandidateInput con variant conforme al esquema")
     print("TODO VERDE")

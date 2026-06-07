@@ -37,6 +37,31 @@ M_CREATE_RESOURCE = (
     "}"
 )
 
+M_EXECUTE_RESOURCE = (
+    "mutation Ejecutar($id: String!, $params: JSON) {"
+    "  executeResource(id: $id, params: $params) {"
+    "    success message resourceId executionId"
+    "  }"
+    "}"
+)
+Q_RESOURCE_CANDIDATES = (
+    "query Candidatos($crawler: ID, $status: String) {"
+    "  resourceCandidates(crawlerResourceId: $crawler, status: $status) {"
+    "    id suggestedName pathTemplate fileTypes confidence status promotedResourceId"
+    "  }"
+    "}"
+)
+M_PROMOTE_CANDIDATE = (
+    "mutation Promover($id: ID!, $input: PromoteCandidateInput!) {"
+    "  promoteCandidate(id: $id, input: $input) { id name preset { code } }"
+    "}"
+)
+M_DELETE_RESOURCE = (
+    "mutation Borrar($id: String!, $hard: Boolean!) {"
+    "  deleteResource(id: $id, hardDelete: $hard)"
+    "}"
+)
+
 _AUTH_HINTS = ("permis", "autoriz", "autenticad", "no autenticado", "sesión",
                "sesion", "forbidden", "unauthorized", "login")
 
@@ -158,3 +183,42 @@ class OdmClient:
         variables = build_resource_input(name=name, fetcher_id=fetcher_id,
                                          params=params, preset_id=preset_id, **kw)
         return self.execute(M_CREATE_RESOURCE, variables)["createResource"]
+
+    # ── Pilotaje del discovery (todo el ciclo Web Tree desde ckan-jerez) ──────
+    def execute_resource(self, resource_id: str, params: Optional[dict] = None) -> dict:
+        """Ejecuta un recurso. En el crawler Web Tree, dispara el DISCOVERY
+        (asíncrono en ODM): los candidatos se pueblan tras unos instantes; usa
+        `resource_candidates` para leerlos (con reintentos si hace falta)."""
+        return self.execute(M_EXECUTE_RESOURCE, {"id": resource_id, "params": params})["executeResource"]
+
+    def resource_candidates(self, crawler_resource_id: Optional[str] = None,
+                            status: Optional[str] = None) -> list[dict]:
+        """Lista los candidatos descubiertos por un crawler (suggestedName,
+        pathTemplate, fileTypes, confidence…) para decidir su variante."""
+        data = self.execute(Q_RESOURCE_CANDIDATES,
+                            {"crawler": crawler_resource_id, "status": status})
+        return data["resourceCandidates"]
+
+    def promote_candidate(self, candidate_id: str, *, name: str, target_table: str,
+                          variante: Optional[str] = None, enable_load: bool = False,
+                          load_mode: str = "upsert", schedule: Optional[str] = None) -> dict:
+        """Promueve un candidato a recurso, eligiendo su VARIANTE (censo/datos/receta)."""
+        inp: dict[str, Any] = {"name": name, "targetTable": target_table,
+                               "enableLoad": enable_load, "loadMode": load_mode}
+        if variante:
+            inp["variant"] = variante
+        if schedule:
+            inp["schedule"] = schedule
+        return self.execute(M_PROMOTE_CANDIDATE, {"id": candidate_id, "input": inp})["promoteCandidate"]
+
+    def discard_candidate_resource(self, resource_id: str, hard: bool = False) -> bool:
+        """Borra un recurso (p. ej. retirar los recursos Jerez heredados de ODM)."""
+        return self.execute(M_DELETE_RESOURCE, {"id": resource_id, "hard": hard})["deleteResource"]
+
+    def discover(self, crawler_resource_id: str, params: Optional[dict] = None) -> dict:
+        """Pilota el discovery: ejecuta el crawler y devuelve {execution, candidates}.
+        Como el discovery es asíncrono, `candidates` puede llegar vacío en la
+        primera lectura; el llamador puede reconsultar `resource_candidates`."""
+        execution = self.execute_resource(crawler_resource_id, params)
+        candidates = self.resource_candidates(crawler_resource_id=crawler_resource_id)
+        return {"execution": execution, "candidates": candidates}
