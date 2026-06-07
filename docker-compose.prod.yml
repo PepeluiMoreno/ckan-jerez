@@ -1,5 +1,28 @@
+# Producción: imagen publicada en GHCR + enrutado por dominio.
+# ckan-jerez corre como https://odclient.pepelui.es (panel /, API /api, webhook
+# /webhooks/odmgr, salud /health). Sigue siendo INDEPENDIENTE de ODM: habla con
+# ODM (odmgr.pepelui.es) solo por su API pública; nunca su BD ni su red interna.
 services:
   ckan-jerez:
     image: ghcr.io/pepeluimoreno/ckan-jerez:latest
+    networks:
+      - internal
+      - web                      # red EXTERNA del reverse-proxy (ajusta el nombre a tu Traefik)
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ckanjerez.rule=Host(`odclient.pepelui.es`)"
+      - "traefik.http.routers.ckanjerez.entrypoints=websecure"
+      - "traefik.http.routers.ckanjerez.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ckanjerez.loadbalancer.server.port=8000"
+
+# Notas:
+# - Con Traefik el ingreso lo hace el proxy por la red 'web'; el puerto publicado
+#   en el compose base es inocuo (puedes no exponerlo en el firewall del host).
+# - Ajusta a tu Traefik: nombre de la red externa ('web'), entrypoint
+#   ('websecure') y certresolver ('letsencrypt'). Con otro proxy (nginx/Caddy),
+#   sustituye estas labels apuntando al contenedor en el puerto 8000.
+networks:
+  web:
+    external: true
 # Cuando el CKAN propio tenga web, aquí se añadirán sus servicios (postgres+solr+
-# redis del CKAN, nginx/traefik) — en la red PROPIA de ckan-jerez, nunca la de ODM.
+# redis del CKAN) — en la red PROPIA de ckan-jerez, nunca la de ODM.
