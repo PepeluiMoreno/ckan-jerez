@@ -33,6 +33,9 @@ Convención: `[ ]` pendiente · `[x]` hecho · `[-]` descartado.
 
 ## Hecho
 
+- [x] **Orquestación discover → política → promote** (`services/pilot.py`):
+  política de variantes de Jerez (token de receta→receta, tabular puro→datos,
+  prosa/mixto→censo) y `discover_and_promote` (dry-run por defecto). Tests verdes.
 - [x] **Pilotaje del discovery por GraphQL** (`services/odm_client.py`):
   `execute_resource` (dispara el discovery del crawler), `resource_candidates`
   (lista candidatos), `promote_candidate` (con `variant`: censo/datos/receta) y

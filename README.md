@@ -80,7 +80,10 @@ y webhook); no comparte con él base de datos ni red.
    GraphQL**, los recursos del Portal de Transparencia de Jerez: selecciona el
    **Web Tree fetcher** y configura sus variantes (*censo*, *datos*, *receta*)
    según cada documento. La declaración local de qué definir reside en
-   `data/odm_resources/jerez.json`.
+   `data/odm_resources/jerez.json`. Los recursos **no se crean tocando la base de
+   datos de ODM, sino por su API GraphQL** — ver la
+   [referencia de la API GraphQL de ODM](https://github.com/PepeluiMoreno/OpenDataManager/blob/main/docs/API_GRAPHQL.md)
+   y su [esquema (SDL)](https://github.com/PepeluiMoreno/OpenDataManager/blob/main/docs/schema.graphql).
 2. **Cosecha.** ODM ejecuta la cosecha del Portal de Transparencia y normaliza el
    resultado.
 3. **Notificación.** Al completar una carga, ODM emite un webhook firmado hacia

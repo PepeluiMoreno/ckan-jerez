@@ -109,6 +109,12 @@ para el árbol documental del portal— y configurando sus variantes (*censo*,
 La definición es idempotente: crea, actualiza o deja intacto cada recurso según
 difiera o no de lo ya definido en ODM.
 
+> **Los recursos se crean en ODM por su API GraphQL, nunca tocando su base de
+> datos.** El contrato y las operaciones (incluido el flujo de discovery) están
+> documentados en la API de ODM:
+> [`docs/API_GRAPHQL.md`](https://github.com/PepeluiMoreno/OpenDataManager/blob/main/docs/API_GRAPHQL.md)
+> y el esquema [`docs/schema.graphql`](https://github.com/PepeluiMoreno/OpenDataManager/blob/main/docs/schema.graphql).
+
 ### 4.2. Notificación por webhook (push)
 
 Al completar una carga, ODM emite `POST /webhooks/odmgr` con el dataset publicado.
