@@ -10,6 +10,7 @@ services:
       - traefik_public           # red EXTERNA de Traefik
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=traefik_public"
       - "traefik.http.routers.ckanjerez.rule=Host(`odclient.pepelui.es`)"
       - "traefik.http.routers.ckanjerez.entrypoints=websecure"
       - "traefik.http.routers.ckanjerez.tls.certresolver=letsencrypt"
