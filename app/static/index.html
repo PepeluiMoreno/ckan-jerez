@@ -137,7 +137,7 @@ createApp({
     <!-- Dashboard -->
     <div v-if="view==='dashboard'">
       <h2 class="text-xl font-bold text-gray-100 mb-1">Dashboard</h2>
-      <p class="text-sm text-gray-400 mb-5">Consola de operador del suscriptor. ckan-jerez homogeneiza los datos de ODM en un CKAN/DCAT uniforme.</p>
+      <p class="text-sm text-gray-400 mb-5">Consola de manejo de las suscripciones al servicio de datos abiertos para el portal CKAN-Jerez.</p>
       <div class="grid grid-cols-3 gap-4 mb-6">
         <div class="card p-4"><div class="text-xs text-gray-500 mb-1">ODM</div><div class="text-lg" :style="{color: odmStatus==='online'?'#34d399':'#f87171'}">{{ odmStatus }}</div></div>
         <div class="card p-4"><div class="text-xs text-gray-500 mb-1">CKAN</div><div class="text-lg">{{ status.ckan_configured ? 'configurado' : 'sin configurar' }}</div></div>
