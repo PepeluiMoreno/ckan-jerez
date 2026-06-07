@@ -1,17 +1,18 @@
 # Producción: imagen publicada en GHCR + enrutado por dominio.
-# ckan-jerez corre como https://odclient.pepelui.es (panel /, API /api, webhook
+# ckan-jerez corre como https://ckan-mgr.pepelui.es (panel /, API /api, webhook
 # /webhooks/odmgr, salud /health). Sigue siendo INDEPENDIENTE de ODM: habla con
 # ODM (odmgr.pepelui.es) solo por su API pública; nunca su BD ni su red interna.
 services:
   ckan-jerez:
     image: ghcr.io/pepeluimoreno/ckan-jerez:latest
+    container_name: ckan-mgr
     networks:
       - internal
       - traefik_public           # red EXTERNA de Traefik
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik_public"
-      - "traefik.http.routers.ckanjerez.rule=Host(`odclient.pepelui.es`)"
+      - "traefik.http.routers.ckanjerez.rule=Host(`ckan-mgr.pepelui.es`)"
       - "traefik.http.routers.ckanjerez.entrypoints=websecure"
       - "traefik.http.routers.ckanjerez.tls.certresolver=letsencrypt"
       - "traefik.http.services.ckanjerez.loadbalancer.server.port=8000"
