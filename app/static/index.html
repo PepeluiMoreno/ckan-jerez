@@ -37,6 +37,7 @@ createApp({
   setup() {
     const view = ref('recursos')
     const nav = [
+      { id:'alta', label:'🔑 Alta en ODM' },
       { id:'recursos', label:'🗂️ Recursos' },
       { id:'actividad', label:'📨 Entregas' },
     ]
@@ -56,6 +57,12 @@ createApp({
 
     const filtros = reactive({ q:'', pub:'', soloSus:true })
     const modal = reactive({ open:false, titulo:'', texto:'' })
+    const help = ref(false)
+    const onboarding = reactive({ tiene_token:false, operativa:false, solicitud:null, app_username:null, token_origen:null, token_error:null, app_name:'ckan-jerez' })
+    const altaForm = reactive({ nombre:'ckan-jerez', contacto:'', proposito:'Homogeneización y publicación en CKAN de datos abiertos de Jerez.' })
+    const tokenInput = ref('')
+    const proposeForm = reactive({ name:'Jerez — ', root_url:'', variante:'Censo documental', descripcion:'' })
+    const proposeDone = ref(null)
     const showWizard = ref(false)
     const wizard = reactive({
       fetcher:'', preset:'', template:null, fixed:[], manifest:null, done:null,
@@ -130,7 +137,19 @@ createApp({
     async function loadActividad() {
       try { notifications.value = await api('/odm/notifications') } catch {}
     }
-    const loaders = { recursos: loadRecursos, actividad: loadActividad }
+    async function loadOnboarding() { Object.assign(onboarding, await api('/onboarding')) }
+    function enviarSolicitud() { run(async () => {
+      onboarding.solicitud = await api('/onboarding/solicitar', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(altaForm)})
+    }) }
+    function guardarToken() { run(async () => {
+      await api('/onboarding/token', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tokenInput.value})})
+      tokenInput.value=''; await loadOnboarding(); await loadStatus()
+    }) }
+    function proponerRecurso() { run(async () => {
+      proposeDone.value=null
+      proposeDone.value = await api('/odm/propose', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(proposeForm)})
+    }) }
+    const loaders = { recursos: loadRecursos, actividad: loadActividad, alta: loadOnboarding }
     function go(id) { view.value = id; if (loaders[id]) run(loaders[id]) }
 
     // ── acciones ──
@@ -226,6 +245,8 @@ createApp({
              filtros, modal, showWizard, wizard, presetsOf, pubsDisponibles, pubsOdmExtra,
              subByResource, lastOk, pendientes, recursosFiltrados,
              go, fmtAgo, enOdm, suscribir, desuscribir, refrescar, borrarRecurso, clonar,
+             help, onboarding, altaForm, tokenInput, proposeForm, proposeDone,
+             enviarSolicitud, guardarToken, proponerRecurso, loadOnboarding,
              getTemplate, pickPub, addParam, delParam, previewSource, createSource }
   },
   template: `
@@ -237,6 +258,7 @@ createApp({
     </div>
     <nav class="flex-1 p-3 space-y-0.5 overflow-y-auto">
       <div v-for="n in nav" :key="n.id" class="nav-item" :class="{active: view===n.id}" @click="go(n.id)">{{ n.label }}</div>
+      <div class="nav-item" @click="help=true">❓ Ayuda</div>
     </nav>
     <div class="p-4 border-t border-gray-700 space-y-2">
       <div class="stline"><span>ODM</span>
@@ -375,6 +397,66 @@ createApp({
       </div>
     </div>
 
+    <!-- Alta en ODM -->
+    <div v-else-if="view==='alta'">
+      <h2 class="text-xl font-bold text-gray-100 mb-1">Alta en OpenDataManager</h2>
+      <p class="text-sm text-gray-400 mb-5">Ciclo del consumidor: solicitar el alta → ODM la aprueba y emite un token → con el token, suscribirse y proponer recursos.</p>
+
+      <div class="card p-5 mb-5">
+        <div class="flex items-center gap-2 text-sm">
+          <span class="pill" :style="onboarding.operativa ? 'background:#064e3b;color:#34d399' : 'background:#78350f;color:#fbbf24'">
+            {{ onboarding.operativa ? '✓ aplicación operativa' : (onboarding.tiene_token ? 'token guardado' : 'sin alta') }}
+          </span>
+          <span v-if="onboarding.app_username" class="text-gray-400">como «{{ onboarding.app_username }}»</span>
+          <span v-if="onboarding.token_origen" class="text-gray-600 text-xs ml-auto">token: {{ onboarding.token_origen }}</span>
+        </div>
+        <p v-if="onboarding.token_error" class="text-xs text-red-300 mt-2">El token guardado no valida: {{ onboarding.token_error }}</p>
+      </div>
+
+      <div v-if="!onboarding.operativa" class="card p-5 mb-5">
+        <h3 class="text-sm font-semibold text-gray-200 mb-1">1 · Solicitar alta</h3>
+        <p class="text-xs text-gray-400 mb-3">Registra la solicitud en ODM. Queda pendiente hasta que un administrador la apruebe.</p>
+        <div class="grid grid-cols-3 gap-3">
+          <label class="text-xs text-gray-400">Nombre<input v-model="altaForm.nombre" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+          <label class="text-xs text-gray-400">Contacto<input v-model="altaForm.contacto" placeholder="email" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+          <label class="text-xs text-gray-400">Propósito<input v-model="altaForm.proposito" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+        </div>
+        <div class="mt-3"><button class="btn btn-primary" :disabled="busy || !altaForm.nombre" @click="enviarSolicitud">Enviar solicitud</button></div>
+        <div v-if="onboarding.solicitud" class="card border-blue-700 bg-blue-900/30 text-blue-200 px-4 py-2.5 text-sm mt-3">
+          Solicitud «{{ onboarding.solicitud.nombre }}» — estado <b>{{ onboarding.solicitud.estado }}</b>.
+          <span v-if="onboarding.solicitud.estado==='pendiente'"> Avisa al administrador de ODM para que la apruebe y te dé el token.</span>
+          <span v-if="onboarding.solicitud.motivo"> Motivo: {{ onboarding.solicitud.motivo }}</span>
+        </div>
+      </div>
+
+      <div v-if="!onboarding.operativa" class="card p-5 mb-5">
+        <h3 class="text-sm font-semibold text-gray-200 mb-1">2 · Introducir el token</h3>
+        <p class="text-xs text-gray-400 mb-3">Cuando ODM apruebe el alta te dará un token (se muestra una sola vez). Pégalo aquí.</p>
+        <div class="flex gap-2">
+          <input v-model="tokenInput" placeholder="odm_..." class="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200">
+          <button class="btn btn-primary whitespace-nowrap" :disabled="busy || !tokenInput" @click="guardarToken">Guardar token</button>
+        </div>
+        <p class="text-xs text-gray-500 mt-2">Para que sobreviva a redespliegues, muévelo luego al secreto <code>ODM_TOKEN</code>.</p>
+      </div>
+
+      <div v-if="onboarding.operativa" class="card p-5">
+        <h3 class="text-sm font-semibold text-gray-200 mb-1">Proponer un recurso al catálogo</h3>
+        <p class="text-xs text-gray-400 mb-3">Propones una fuente Web Tree. ODM la registra como <b>pendiente</b>; un administrador la aprueba antes de que se ejecute.</p>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="text-xs text-gray-400">Nombre<input v-model="proposeForm.name" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+          <label class="text-xs text-gray-400">URL raíz<input v-model="proposeForm.root_url" placeholder="https://…" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+          <label class="text-xs text-gray-400">Variante
+            <select v-model="proposeForm.variante" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+              <option>Censo documental</option><option>Extracción de datos</option><option>Extracción con receta</option></select></label>
+          <label class="text-xs text-gray-400">Descripción<input v-model="proposeForm.descripcion" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+        </div>
+        <div class="mt-3"><button class="btn btn-primary" :disabled="busy || !proposeForm.name || !proposeForm.root_url" @click="proponerRecurso">Proponer recurso</button></div>
+        <div v-if="proposeDone" class="card border-green-700 bg-green-900/30 text-green-200 px-4 py-2.5 text-sm mt-3">
+          ✅ Propuesto «{{ proposeDone.name }}» — pendiente de aprobación en ODM.
+        </div>
+      </div>
+    </div>
+
     <!-- Actividad -->
     <div v-else-if="view==='actividad'">
       <h2 class="text-xl font-bold text-gray-100 mb-1">Entregas</h2>
@@ -396,6 +478,30 @@ createApp({
       <h3 class="text-sm font-semibold text-yellow-400 mb-2">⚠️ {{ modal.titulo }}</h3>
       <p class="text-sm text-gray-300">{{ modal.texto }}</p>
       <div class="mt-4 text-right"><button class="btn btn-primary" @click="modal.open=false">Entendido</button></div>
+    </div>
+  </div>
+
+  <!-- Ayuda -->
+  <div v-if="help" class="fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,.6)" @click.self="help=false">
+    <div class="card p-6 w-full max-w-2xl mx-4" style="max-height:85vh;overflow-y:auto">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-base font-semibold text-blue-300">❓ Ayuda · cómo funciona ckan-jerez</h3>
+        <button class="text-gray-400 hover:text-white" @click="help=false">✕</button>
+      </div>
+      <div class="text-sm text-gray-300 space-y-3 leading-relaxed">
+        <p><b>ckan-jerez</b> es un <b>consumidor</b> de OpenDataManager (ODM): no produce datos, los recibe de ODM y los publica de forma homogénea en CKAN.</p>
+        <p class="text-gray-200 font-medium">Ciclo de vida (pestaña «Alta en ODM»)</p>
+        <ol class="list-decimal ml-5 space-y-1">
+          <li><b>Solicitar alta</b>: envías una solicitud a ODM; queda <i>pendiente</i>.</li>
+          <li><b>Aprobación</b>: un administrador de ODM la aprueba y emite un <b>token</b> (visible una sola vez).</li>
+          <li><b>Token</b>: lo pegas aquí; desde entonces ckan-jerez actúa como aplicación identificada.</li>
+          <li><b>Suscripción</b>: en «Recursos» te suscribes a los que te interesen; ODM avisa por webhook al haber datos nuevos.</li>
+          <li><b>Propuesta</b>: puedes <b>proponer</b> recursos nuevos; ODM los crea <i>pendientes</i> y un administrador los aprueba antes de ejecutarlos.</li>
+        </ol>
+        <p class="text-gray-200 font-medium">Productor vs. consumidor</p>
+        <p>El rastreo de un portal (recurso «nodriza» Web Tree) afecta al sitio de origen, por eso <b>se propone desde aquí pero lo aprueba e instancia ODM</b>. Las suscripciones y la publicación en CKAN son responsabilidad de ckan-jerez.</p>
+      </div>
+      <div class="mt-4 text-right"><button class="btn btn-primary" @click="help=false">Entendido</button></div>
     </div>
   </div>
   `

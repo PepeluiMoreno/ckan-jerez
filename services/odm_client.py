@@ -114,6 +114,13 @@ Q_RESOURCE_MANIFEST = (
 Q_PUBLISHERS = (
     "query Pubs { publishers { id nombre acronimo nivel } }"
 )
+M_CREAR_SOLICITUD = (
+    "mutation Solicitar($input: CrearSolicitudIngresoInput!) {"
+    "  crearSolicitudIngreso(input: $input) {"
+    "    id nombre contacto proposito estado motivo createdAt"
+    "  }"
+    "}"
+)
 M_UNSUBSCRIBE_RESOURCE = (
     "mutation Desuscribir($id: String!) { unsubscribeResource(id: $id) }"
 )
@@ -178,19 +185,35 @@ class OdmClient:
 
     def __init__(self, base_url: str, username: Optional[str] = None,
                  password: Optional[str] = None, graphql_path: str = "/graphql",
-                 timeout: int = 30):
+                 timeout: int = 30, token: Optional[str] = None):
         self.base = base_url.rstrip("/")
         self.gql_url = self.base + graphql_path
         self.username = username
         self.password = password
+        self.token = token
         self.timeout = timeout
         self.session = requests.Session()
-        self._authenticated = False
+        if token:  # opción B: token Bearer de servicio (emitido al aprobar el alta)
+            self.session.headers["Authorization"] = f"Bearer {token}"
+        self._authenticated = bool(token)
 
     @classmethod
     def from_env(cls) -> "OdmClient":
         return cls(os.environ["ODM_API_URL"], os.environ.get("ODM_USER"),
-                   os.environ.get("ODM_PASSWORD"))
+                   os.environ.get("ODM_PASSWORD"), token=os.environ.get("ODM_TOKEN"))
+
+    # ── Alta self-service (opción B): solicitud de ingreso, sin autenticación ─
+    def crear_solicitud_ingreso(self, *, nombre: str, contacto: Optional[str] = None,
+                                proposito: Optional[str] = None) -> dict:
+        """Registra una solicitud de alta como aplicación consumidora. Mutación
+        pública: queda 'pendiente' hasta que un admin de ODM la apruebe y emita
+        el token Bearer que esta app usará en adelante."""
+        inp: dict[str, Any] = {"nombre": nombre}
+        if contacto:
+            inp["contacto"] = contacto
+        if proposito:
+            inp["proposito"] = proposito
+        return self.execute(M_CREAR_SOLICITUD, {"input": inp})["crearSolicitudIngreso"]
 
     # ── Auth (opción A) ──────────────────────────────────────────────────────
     def login(self) -> dict:

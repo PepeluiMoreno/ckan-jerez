@@ -29,10 +29,21 @@ def _client_or_error():
     global _client
     if _client is None:
         from services.odm_client import OdmClient
-        c = OdmClient.from_env()
-        c.login()
+        from app import onboarding
+        s = get_settings()
+        tok = onboarding.get_token()
+        if tok:                       # opción B: token Bearer (alta aprobada)
+            c = OdmClient(s.odm_api_url, token=tok)
+        else:                         # opción A (legado): cuenta de servicio
+            c = OdmClient.from_env()
+            c.login()
         _client = c
     return _client
+
+
+def _reset_client() -> None:
+    global _client
+    _client = None
 
 
 def _odm(fn):
@@ -241,3 +252,76 @@ def do_bootstrap(body: dict = Body(default={})) -> Any:
         raise HTTPException(status_code=400, detail="faltan PUBLIC_BASE_URL y/o ODM_WEBHOOK_SECRET")
     return _odm(lambda c: bootstrap(c, catalog=_catalog(), app_name=APP_NAME,
                                     webhook_url=s.webhook_url, webhook_secret=s.odm_webhook_secret, dry_run=dry))
+
+
+# ── Alta self-service como aplicación consumidora (flujo solicitud → token) ───
+
+@router.get("/onboarding")
+def onboarding_state() -> Any:
+    """Estado del alta para el panel: solicitud enviada, token presente y si la
+    aplicación ya es operativa contra ODM."""
+    from app import onboarding
+    st = onboarding.state()
+    if st["tiene_token"]:
+        try:
+            _client_or_error().applications()   # prueba autenticada
+            st["operativa"] = True
+        except Exception as e:  # noqa: BLE001
+            st["operativa"] = False
+            st["token_error"] = str(e)
+    else:
+        st["operativa"] = False
+    st["app_name"] = APP_NAME
+    return st
+
+
+@router.post("/onboarding/solicitar")
+def onboarding_solicitar(body: dict = Body(...)) -> Any:
+    """Envía a ODM la solicitud de alta (mutación pública, sin token). Queda
+    pendiente hasta que un admin de ODM la apruebe y emita el token."""
+    from services.odm_client import OdmClient
+    from app import onboarding
+    s = get_settings()
+    nombre = (body.get("nombre") or APP_NAME).strip()
+    contacto = (body.get("contacto") or "").strip() or None
+    proposito = (body.get("proposito") or "").strip() or None
+    try:
+        sol = OdmClient(s.odm_api_url).crear_solicitud_ingreso(
+            nombre=nombre, contacto=contacto, proposito=proposito)
+        onboarding.set_solicitud(sol)
+        return sol
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"No se pudo enviar la solicitud: {e}")
+
+
+@router.post("/onboarding/token")
+def onboarding_token(body: dict = Body(...)) -> Any:
+    """Guarda el token Bearer emitido por ODM al aprobar el alta, tras verificarlo."""
+    from services.odm_client import OdmClient
+    from app import onboarding
+    s = get_settings()
+    token = (body.get("token") or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="Falta el token")
+    try:
+        OdmClient(s.odm_api_url, token=token).applications()
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Token no válido o ODM no responde: {e}")
+    onboarding.set_token(token)
+    _reset_client()
+    return {"ok": True, "operativa": True}
+
+
+@router.post("/odm/propose")
+def odm_propose(body: dict = Body(...)) -> Any:
+    """Propone un recurso Web Tree a ODM. Como la petición va autenticada como
+    aplicación, ODM lo crea en estado 'pendiente' de aprobación (gobernanza §11)."""
+    name = (body.get("name") or "").strip()
+    root_url = (body.get("root_url") or "").strip()
+    variante = body.get("variante") or None
+    descripcion = (body.get("descripcion") or "").strip() or None
+    if not name or not root_url:
+        raise HTTPException(status_code=400, detail="faltan name y root_url")
+    params = {"root_url": root_url}
+    return _odm(lambda c: c.create_webtree_resource(
+        name=name, params=params, variante=variante, description=descripcion))
