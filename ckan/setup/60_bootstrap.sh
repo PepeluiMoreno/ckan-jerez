@@ -43,4 +43,5 @@ if [ ! -f "$MARKER" ]; then
 fi
 
 echo "[bootstrap] completado."
-exit 0
+# NO usar `exit`: este script se ejecuta con `source` desde start_ckan.sh; un exit
+# aquí mataría el shell de arranque antes del `exec` del servidor web (bucle).
