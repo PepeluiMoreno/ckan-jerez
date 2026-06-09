@@ -1,0 +1,128 @@
+# Stack CKAN de ckan-jerez: la instancia de datos abiertos que recibe los datasets
+# de ODM (vía el exportador services/ckan_publisher.py) y los publica en
+# https://ckan.pepelui.es.
+#
+# Se combina con el compose base/prod de la app:
+#   docker compose --env-file .env.production \
+#     -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.ckan.yml up -d
+#
+# Todo corre en la red PROPIA de ckan-jerez (nunca la de ODM). El ingreso público
+# lo hace Traefik (igual que el panel ckan-mgr.pepelui.es).
+services:
+
+  # ── CKAN (web) ─────────────────────────────────────────────────────────────
+  ckan:
+    build:
+      context: ./ckan
+    image: ckan-jerez/ckan:2.11
+    container_name: ${APP_PREFIX:-ckanjerez}_ckan
+    restart: unless-stopped
+    depends_on:
+      ckan-db: { condition: service_healthy }
+      ckan-solr: { condition: service_healthy }
+      ckan-redis: { condition: service_healthy }
+    environment:
+      CKAN_SITE_URL: https://ckan.pepelui.es
+      CKAN_SQLALCHEMY_URL: postgresql://ckan:${CKAN_DB_PASSWORD}@ckan-db/ckan
+      CKAN_DATASTORE_WRITE_URL: postgresql://ckan:${CKAN_DB_PASSWORD}@ckan-db/datastore
+      CKAN_DATASTORE_READ_URL: postgresql://datastore_ro:${DATASTORE_RO_PASSWORD}@ckan-db/datastore
+      CKAN_SOLR_URL: http://ckan-solr:8983/solr/ckan
+      CKAN_REDIS_URL: redis://ckan-redis:6379/1
+      CKAN___BEAKER__SESSION__SECRET: ${CKAN_SESSION_SECRET}
+      CKAN___API_TOKEN__JWT__ENCODE__SECRET: ${CKAN_JWT_SECRET}
+      CKAN___API_TOKEN__JWT__DECODE__SECRET: ${CKAN_JWT_SECRET}
+      CKAN__DATAPUSHER__API_TOKEN: ${CKAN_DATAPUSHER_TOKEN:-}
+      CKAN_SYSADMIN_NAME: ${CKAN_SYSADMIN_NAME:-admin}
+      CKAN_SYSADMIN_PASSWORD: ${CKAN_SYSADMIN_PASSWORD}
+      CKAN_SYSADMIN_EMAIL: ${CKAN_SYSADMIN_EMAIL:-admin@pepelui.es}
+    volumes:
+      - ckan_storage:/var/lib/ckan
+    networks:
+      - internal
+      - traefik_public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_public"
+      - "traefik.http.routers.ckanjerezckan.rule=Host(`ckan.pepelui.es`)"
+      - "traefik.http.routers.ckanjerezckan.entrypoints=websecure"
+      - "traefik.http.routers.ckanjerezckan.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ckanjerezckan.loadbalancer.server.port=5000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/api/3/action/status_show"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # ── PostgreSQL + PostGIS (BD de CKAN + DataStore) ───────────────────────────
+  ckan-db:
+    image: postgis/postgis:16-3.4
+    container_name: ${APP_PREFIX:-ckanjerez}_ckan_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ckan
+      POSTGRES_PASSWORD: ${CKAN_DB_PASSWORD}
+      POSTGRES_DB: ckan
+      DATASTORE_RO_PASSWORD: ${DATASTORE_RO_PASSWORD}
+    volumes:
+      - ckan_db:/var/lib/postgresql/data
+      - ./ckan/postgres:/docker-entrypoint-initdb.d:ro
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ckan"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Solr 9 con soporte espacial (índice de búsqueda de CKAN) ────────────────
+  ckan-solr:
+    image: ckan/ckan-solr:2.11-solr9-spatial
+    container_name: ${APP_PREFIX:-ckanjerez}_ckan_solr
+    restart: unless-stopped
+    volumes:
+      - ckan_solr:/var/solr
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8983/solr/ckan/admin/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ── Redis (cola/caché de CKAN) ──────────────────────────────────────────────
+  ckan-redis:
+    image: redis:7
+    container_name: ${APP_PREFIX:-ckanjerez}_ckan_redis
+    restart: unless-stopped
+    volumes:
+      - ckan_redis:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── DataPusher (carga ficheros tabulares al DataStore) ──────────────────────
+  ckan-datapusher:
+    image: ckan/datapusher:0.0.20
+    container_name: ${APP_PREFIX:-ckanjerez}_ckan_datapusher
+    restart: unless-stopped
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8800 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  ckan_storage:
+  ckan_db:
+  ckan_solr:
+  ckan_redis:
+
+# Las redes 'internal' y 'traefik_public' las declaran los compose base/prod.
