@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgeos-dev \
         python3-dev \
         gcc \
+        postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Extensiones (se instalan en el venv de CKAN, $APP_DIR/../venv vía pip de la imagen base).
@@ -30,9 +31,12 @@ RUN pip install --no-cache-dir \
         -r https://raw.githubusercontent.com/ckan/ckanext-spatial/master/requirements.txt \
     || echo "AVISO: revisa los requirements de las extensiones para la versión fijada"
 
-# Hook de arranque: configura los plugins y ajustes de las extensiones en el .ini
-# antes de levantar CKAN. La imagen base ejecuta los scripts de /docker-entrypoint.d.
-COPY setup/ckan_jerez_setup.sh /docker-entrypoint.d/99_ckan_jerez_setup.sh
-RUN chmod +x /docker-entrypoint.d/99_ckan_jerez_setup.sh
+# Hooks de arranque (la imagen base ejecuta /docker-entrypoint.d en orden):
+#   50_plugins   → activa plugins y ajustes de extensiones en el .ini
+#   60_bootstrap → migraciones, permisos DataStore, sysadmin e índice (idempotente)
+COPY setup/50_plugins.sh   /docker-entrypoint.d/50_ckan_jerez_plugins.sh
+COPY setup/60_bootstrap.sh /docker-entrypoint.d/60_ckan_jerez_bootstrap.sh
+RUN chmod +x /docker-entrypoint.d/50_ckan_jerez_plugins.sh \
+             /docker-entrypoint.d/60_ckan_jerez_bootstrap.sh
 
 USER ckan

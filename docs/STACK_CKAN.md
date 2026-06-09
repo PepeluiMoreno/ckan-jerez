@@ -33,27 +33,16 @@ docker compose --env-file .env.production \
   up -d --build
 ```
 
-## Primer arranque (una vez)
+## Primer arranque (automático)
 
-```bash
-# Prefijo de contenedor según APP_PREFIX (por defecto 'ckanjerez')
-CKAN=ckanjerez_ckan
+El contenedor `ckan` se **autoinicializa** en cada arranque mediante
+`ckan/setup/60_bootstrap.sh` (idempotente): aplica migraciones, fija los permisos
+del DataStore, crea el usuario sysadmin (`CKAN_SYSADMIN_*`) si no existe y
+reconstruye el índice de búsqueda la primera vez. No hace falta ejecutar comandos
+a mano: al levantar el stack, CKAN queda operativo.
 
-# 1. Migraciones de la BD y del DataStore
-docker exec -it $CKAN ckan -c $APP_DIR/ckan.ini db init
-
-# 2. Permisos del DataStore (usuario de solo lectura)
-docker exec -it $CKAN bash -c \
-  'ckan -c $APP_DIR/ckan.ini datastore set-permissions | \
-   psql "$CKAN_DATASTORE_WRITE_URL"'
-
-# 3. Índice de Solr
-docker exec -it $CKAN ckan -c $APP_DIR/ckan.ini search-index rebuild
-
-# 4. Usuario sysadmin
-docker exec -it $CKAN ckan -c $APP_DIR/ckan.ini sysadmin add "$CKAN_SYSADMIN_NAME" \
-  email="$CKAN_SYSADMIN_EMAIL" password="$CKAN_SYSADMIN_PASSWORD"
-```
+> Si necesitas forzar una reindexación, borra la marca `/var/lib/ckan/.bootstrap_done`
+> del volumen `ckan_storage` y reinicia el contenedor.
 
 ## Conectar el exportador
 
