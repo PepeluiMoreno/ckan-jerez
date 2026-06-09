@@ -23,27 +23,27 @@ else
     fi
 fi
 
-# 2) Marca del portal: título, descripción, logo y CSS propio (config_option_update,
-#    persistido en system_info). El CSS se lee del fichero empaquetado.
-PAYLOAD=$(python3 - "$BRANDING/custom.css" <<'PY' 2>/dev/null
-import json, sys
-css = ""
-try:
-    with open(sys.argv[1], encoding="utf-8") as f:
-        css = f.read()
-except Exception:
-    pass
-print(json.dumps({
-    "ckan.site_title": "Datos Abiertos de Jerez",
-    "ckan.site_description": "Portal de datos abiertos del Ayuntamiento de Jerez de la Frontera",
-    "ckan.site_logo": "/base/images/jerez-logo.svg",
-    "ckan.site_custom_css": css,
-}))
-PY
-)
+# 2) Marca del portal (config_option_update, persistido en system_info). Se usa la
+#    forma key=value de ckanapi (la de stdin no la consume). Llamadas separadas para
+#    que un fallo en una opción no impida las demás.
+ckanapi action config_option_update -c "$CKAN_INI" \
+        "ckan.site_title=Datos Abiertos de Jerez" \
+        "ckan.site_description=Portal de datos abiertos del Ayuntamiento de Jerez de la Frontera" \
+        >/dev/null 2>&1 \
+    && echo "[init-jerez] título y descripción aplicados." \
+    || echo "[init-jerez] AVISO: título/descripción no aplicados."
 
-if [ -n "$PAYLOAD" ] && printf '%s' "$PAYLOAD" | ckanapi action config_option_update -c "$CKAN_INI" >/dev/null 2>&1; then
-    echo "[init-jerez] branding aplicado (título, logo y CSS)."
-else
-    echo "[init-jerez] AVISO: no se pudo aplicar el branding."
+ckanapi action config_option_update -c "$CKAN_INI" \
+        "ckan.site_logo=/base/images/jerez-logo.svg" \
+        >/dev/null 2>&1 \
+    && echo "[init-jerez] logo aplicado." \
+    || echo "[init-jerez] AVISO: logo no aplicado."
+
+CSS="$(cat "$BRANDING/custom.css" 2>/dev/null)"
+if [ -n "$CSS" ]; then
+    ckanapi action config_option_update -c "$CKAN_INI" \
+            "ckan.site_custom_css=$CSS" \
+            >/dev/null 2>&1 \
+        && echo "[init-jerez] CSS de tema aplicado." \
+        || echo "[init-jerez] AVISO: CSS no aplicado."
 fi
