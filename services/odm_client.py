@@ -129,7 +129,7 @@ Q_APPLICATIONS = (
 )
 Q_RESOURCES = (
     "query Recursos($activeOnly: Boolean!) {"
-    "  resources(activeOnly: $activeOnly) { id name publisher publisherId }"
+    "  resources(activeOnly: $activeOnly) { id name publisher publisherId parentResourceId generaColecciones }"
     "}"
 )
 Q_DATASET_SUBSCRIPTIONS = (

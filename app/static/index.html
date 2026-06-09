@@ -97,6 +97,13 @@ createApp({
       (!filtros.q || (r.name||'').toLowerCase().includes(filtros.q.toLowerCase()) || (r.publisher||'').toLowerCase().includes(filtros.q.toLowerCase())) &&
       (!filtros.pub || r.publisher === filtros.pub) &&
       (!filtros.soloSus || subByResource.value[r.id])))
+    // ── Jerarquía nodriza → recursos descubiertos (explorador de suscripción) ──
+    const esNodriza = (r) => r && r.generaColecciones === true
+    const expandidas = ref(new Set())
+    const toggleNodriza = (id) => { const n = new Set(expandidas.value); n.has(id) ? n.delete(id) : n.add(id); expandidas.value = n }
+    const hijosDe = (id) => resources.value.filter(r => r.parentResourceId === id).sort((a,b)=>(a.name||'').localeCompare(b.name||'','es'))
+    const idsPresentes = computed(() => new Set(resources.value.map(r => r.id)))
+    const topNivel = computed(() => recursosFiltrados.value.filter(r => !r.parentResourceId || !idsPresentes.value.has(r.parentResourceId)))
     const pubsOdmExtra = computed(() => {
       const conocidos = new Set()
       for (const [k,v] of Object.entries(catalog.publishers||{})) { conocidos.add(k); if (v.nombre) conocidos.add(v.nombre) }
@@ -244,6 +251,7 @@ createApp({
              catalog, resources, subscriptions, executions, notifications, fetchers, odmPubs,
              filtros, modal, showWizard, wizard, presetsOf, pubsDisponibles, pubsOdmExtra,
              subByResource, lastOk, pendientes, recursosFiltrados,
+             esNodriza, expandidas, toggleNodriza, hijosDe, topNivel,
              go, fmtAgo, enOdm, suscribir, desuscribir, refrescar, borrarRecurso, clonar,
              help, onboarding, altaForm, tokenInput, proposeForm, proposeDone,
              enviarSolicitud, guardarToken, proponerRecurso, loadOnboarding,
@@ -308,8 +316,14 @@ createApp({
               <td colspan="2"><span class="pill" style="background:#78350f;color:#fbbf24">pendiente de crear en ODM</span></td>
               <td></td>
             </tr>
-            <tr v-for="r in recursosFiltrados" :key="r.id">
-              <td class="text-gray-200" :title="r.id">{{ r.name }}</td>
+            <template v-for="r in topNivel" :key="r.id">
+            <tr>
+              <td class="text-gray-200" :title="r.id">
+                <button v-if="esNodriza(r) && hijosDe(r.id).length" @click="toggleNodriza(r.id)" style="border:0;background:none;cursor:pointer;color:#c4b5fd" :title="(expandidas.has(r.id)?'Contraer':'Desplegar')+' recursos descubiertos'">{{ expandidas.has(r.id) ? '▾' : '▸' }}</button>
+                <span v-if="esNodriza(r)" title="Nave nodriza (descubre recursos)">🛰️</span>
+                {{ r.name }}
+                <span v-if="esNodriza(r) && hijosDe(r.id).length" class="text-gray-500" style="font-size:.7rem">({{ hijosDe(r.id).length }} descubiertos)</span>
+              </td>
               <td class="text-gray-400">{{ r.publisher || '—' }}</td>
               <td>
                 <button v-if="subByResource[r.id]" class="pill" style="background:#064e3b;color:#34d399;border:0;cursor:pointer" :disabled="busy" @click="desuscribir(r.id)" title="Pulsar para desuscribir">✓ suscrito</button>
@@ -322,7 +336,21 @@ createApp({
                 <button class="btn btn-ghost ml-1" :disabled="busy" @click="borrarRecurso(r.id, r.name)">Borrar</button>
               </td>
             </tr>
-            <tr v-if="!recursosFiltrados.length && !pendientes.length"><td colspan="5" class="text-gray-500">Sin recursos con ese filtro.</td></tr>
+            <tr v-for="c in (expandidas.has(r.id) ? hijosDe(r.id) : [])" :key="c.id" style="background:rgba(0,0,0,.25)">
+              <td class="text-gray-300" :title="c.id"><span class="text-gray-600" style="padding-left:1.25rem">└─</span> {{ c.name }} <span class="pill" style="background:#3b0764;color:#c4b5fd;font-size:.62rem">descubierto</span></td>
+              <td class="text-gray-500">{{ c.publisher || '—' }}</td>
+              <td>
+                <button v-if="subByResource[c.id]" class="pill" style="background:#064e3b;color:#34d399;border:0;cursor:pointer" :disabled="busy" @click="desuscribir(c.id)" title="Pulsar para desuscribir">✓ suscrito</button>
+                <button v-else class="pill bg-gray-700 text-gray-300" style="border:0;cursor:pointer" :disabled="busy || !status.application" @click="suscribir(c.id)" :title="status.application ? 'Pulsar para suscribir' : 'Requiere Application registrada'">suscribir</button>
+              </td>
+              <td :style="{color: (lastOk[c.id] && (Date.now()-new Date(lastOk[c.id]+'Z').getTime())<3600000) ? '#34d399' : '#6b7280'}">{{ fmtAgo(lastOk[c.id]) }}</td>
+              <td class="text-right whitespace-nowrap">
+                <button class="btn btn-ghost" :disabled="busy" @click="refrescar(c.id)">Refrescar</button>
+                <button class="btn btn-ghost ml-1" :disabled="busy" @click="borrarRecurso(c.id, c.name)">Borrar</button>
+              </td>
+            </tr>
+            </template>
+            <tr v-if="!topNivel.length && !pendientes.length"><td colspan="5" class="text-gray-500">Sin recursos con ese filtro.</td></tr>
           </tbody></table>
       </div>
 
