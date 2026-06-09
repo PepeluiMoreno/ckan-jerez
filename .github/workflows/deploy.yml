@@ -114,10 +114,14 @@ jobs:
               echo "[ckan] variables CKAN ausentes: se despliega solo la app (sin stack CKAN)."
             fi
             $COMPOSE pull --ignore-buildable 2>/dev/null || true
+            # La app tiene build+image en el merge, así que `pull --ignore-buildable`
+            # la salta y el contenedor se quedaba con la imagen anterior. Bajamos la
+            # imagen explícitamente y abajo forzamos recreación con ella (sin build).
+            docker pull ghcr.io/pepeluimoreno/ckan-jerez:latest || true
             # Arranca/actualiza el servicio web (uvicorn): sirve panel /, API /api,
             # webhook /webhooks/odmgr y /health. (Antes solo corría un smoke de worker
             # y NUNCA se levantaba el servidor -> Traefik 503 sin backend.)
-            $COMPOSE up -d ckan-jerez
+            $COMPOSE up -d --no-build --force-recreate ckan-jerez
             echo "[health] esperando a que ckan-jerez responda /health..."
             ok=0
             for i in $(seq 1 30); do
