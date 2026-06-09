@@ -200,7 +200,8 @@ def resource_delete(body: dict = Body(...)) -> Any:
     rid = body.get("resource_id")
     if not rid:
         raise HTTPException(status_code=400, detail="falta resource_id")
-    return _odm(lambda c: {"ok": c.delete_resource(rid)})
+    hard = bool(body.get("hard", False))
+    return _odm(lambda c: {"ok": c.delete_resource(rid, hard=hard)})
 
 
 # ── Acciones (escritura) ──────────────────────────────────────────────────────

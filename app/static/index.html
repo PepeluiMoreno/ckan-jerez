@@ -18,6 +18,7 @@
     .btn { font-size:.8rem; border-radius:.5rem; padding:.45rem .85rem; transition:background .15s; }
     .btn-primary { background:#2563eb; color:#fff; } .btn-primary:hover { background:#3b82f6; }
     .btn-ghost { background:rgba(55,65,81,.5); color:#cbd5e1; } .btn-ghost:hover { background:#374151; color:#fff; }
+    .btn-danger { background:#dc2626; color:#fff; } .btn-danger:hover { background:#ef4444; }
     th { text-align:left; font-weight:600; color:#9ca3af; }
     td,th { padding:.5rem .65rem; border-bottom:1px solid #374151; font-size:.8rem; vertical-align:top; }
     pre { background:#0b1220; border:1px solid #374151; border-radius:.5rem; padding:.75rem; overflow:auto; font-size:.75rem; color:#cbd5e1; }
@@ -80,6 +81,7 @@ createApp({
     const tokenInput = ref('')
     const proposeForm = reactive({ name:'Jerez — ', root_url:'', variante:'Censo documental', descripcion:'' })
     const proposeDone = ref(null)
+    const delRecurso = reactive({ open:false, rid:null, nombre:'', hard:false })
     const solicitudPendiente = computed(() => !!onboarding.solicitud && !onboarding.operativa && (onboarding.solicitud.estado || 'pendiente') !== 'rechazada')
     const showWizard = ref(false)
     const wizard = reactive({
@@ -203,9 +205,13 @@ createApp({
       })
     }
     function borrarRecurso(rid, nombre) {
-      if (!window.confirm(`¿Borrar en ODM el recurso «${nombre}»?`)) return
+      delRecurso.rid = rid; delRecurso.nombre = nombre; delRecurso.hard = false; delRecurso.open = true
+    }
+    function confirmarBorrado() {
+      const { rid, hard } = delRecurso
+      delRecurso.open = false
       run(async () => {
-        await api('/odm/resource/delete', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid})})
+        await api('/odm/resource/delete', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid, hard})})
         await loadRecursos()
       })
     }
@@ -270,7 +276,7 @@ createApp({
              filtros, modal, showWizard, wizard, presetsOf, pubsDisponibles, pubsOdmExtra,
              subByResource, lastOk, pendientes, recursosFiltrados,
              esNodriza, expandidas, toggleNodriza, hijosDe, topNivel,
-             go, fmtAgo, enOdm, suscribir, desuscribir, refrescar, borrarRecurso, clonar,
+             go, fmtAgo, enOdm, suscribir, desuscribir, refrescar, borrarRecurso, confirmarBorrado, delRecurso, clonar,
              help, onboarding, altaForm, tokenInput, proposeForm, proposeDone, solicitudPendiente,
              filtrosRec, recepcionesFiltradas, publishersRec,
              enviarSolicitud, guardarToken, proponerRecurso, loadOnboarding,
@@ -555,6 +561,23 @@ createApp({
       <h3 class="text-sm font-semibold text-yellow-400 mb-2">⚠️ {{ modal.titulo }}</h3>
       <p class="text-sm text-gray-300">{{ modal.texto }}</p>
       <div class="mt-4 text-right"><button class="btn btn-primary" @click="modal.open=false">Entendido</button></div>
+    </div>
+  </div>
+
+
+  <!-- #18 Modal de borrado con hard-delete -->
+  <div v-if="delRecurso.open" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="delRecurso.open=false">
+    <div class="bg-gray-800 border border-red-700/50 rounded-xl p-6 w-[440px] shadow-2xl">
+      <h3 class="text-base font-semibold text-white mb-2">Borrar recurso</h3>
+      <p class="text-sm text-gray-300 mb-3">Se borrará en ODM el recurso «{{ delRecurso.nombre }}». Por defecto va a la papelera (recuperable).</p>
+      <label class="flex items-start gap-2 mb-4 cursor-pointer">
+        <input type="checkbox" v-model="delRecurso.hard" class="mt-0.5 accent-red-500">
+        <span class="text-sm text-red-300">Eliminar permanentemente <span class="block text-xs text-gray-500">Sin marcar → papelera. Marcado → borrado irreversible (BD + disco).</span></span>
+      </label>
+      <div class="flex justify-end gap-2">
+        <button class="btn btn-ghost" @click="delRecurso.open=false">Cancelar</button>
+        <button class="btn" :class="delRecurso.hard ? 'btn-danger' : 'btn-primary'" :disabled="busy" @click="confirmarBorrado">{{ delRecurso.hard ? 'Eliminar permanentemente' : 'Mover a papelera' }}</button>
+      </div>
     </div>
   </div>
 
