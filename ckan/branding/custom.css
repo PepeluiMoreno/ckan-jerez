@@ -1,4 +1,4 @@
-/* Tema de marca de ckan-jerez sobre el CKAN estándar.
+/* Tema de marca de ckan-jerez sobre CKAN 2.11 (Bootstrap 5).
    Paleta: burdeos (vino de Jerez), dorado y crema. Se inyecta vía
    ckan.site_custom_css (config_option_update) en el script de inicialización. */
 
@@ -10,41 +10,39 @@
   --jz-tinta: #2B2B2B;
 }
 
-/* Cabeceras */
+/* Franja superior (cuenta / login) */
 .account-masthead { background: var(--jz-burdeos-osc) !important; }
-.masthead,
-.masthead .navbar { background: var(--jz-burdeos) !important; }
-.masthead .navbar-brand,
-.masthead .nav > li > a,
-.masthead .navbar-nav > li > a { color: var(--jz-crema) !important; }
-.masthead .nav > li > a:hover,
-.masthead .navbar-nav > li > a:hover { color: var(--jz-oro) !important; }
-.masthead .navbar-nav > .active > a,
-.masthead .nav .active a { color: #fff !important; border-bottom: 2px solid var(--jz-oro); }
+.account-masthead .account a,
+.account-masthead .account .text { color: var(--jz-crema) !important; }
 
-/* Caja de búsqueda de la portada */
-.homepage .module-search .search-giant input { border: 2px solid var(--jz-oro); }
-.homepage [role="main"], .homepage .module-search { }
+/* Cabecera principal (burdeos) */
+header.masthead { background: var(--jz-burdeos) !important; }
+header.masthead .navbar,
+header.masthead .navbar.navbar-light { background: transparent !important; }
 
-/* Botones primarios y de acción */
-.btn-primary,
-.btn-primary:focus {
+/* Logo: altura garantizada (el SVG es de ancho variable) y siempre visible */
+header.masthead .logo { display: inline-flex; align-items: center; }
+header.masthead .logo img { height: 46px !important; width: auto !important; display: inline-block; }
+
+/* Navegación sobre burdeos */
+header.masthead .navbar-nav .nav-link,
+header.masthead .navbar-nav .nav-item > a { color: var(--jz-crema) !important; }
+header.masthead .navbar-nav .nav-link:hover { color: var(--jz-oro) !important; }
+header.masthead .navbar-nav .nav-link.active,
+header.masthead .navbar-nav .active > .nav-link { color: #fff !important; border-bottom: 2px solid var(--jz-oro); }
+.navbar-toggler .fa-bars { color: var(--jz-crema) !important; }
+
+/* Botones, enlaces y acentos */
+.btn-primary, .btn-primary:focus {
   background: var(--jz-burdeos) !important;
   border-color: var(--jz-burdeos-osc) !important;
 }
 .btn-primary:hover { background: var(--jz-burdeos-osc) !important; }
-.btn-default:hover { border-color: var(--jz-oro) !important; color: var(--jz-burdeos) !important; }
-
-/* Enlaces y acentos */
 a { color: var(--jz-burdeos); }
 a:hover { color: var(--jz-burdeos-osc); }
-.tag, .label-default { background: var(--jz-burdeos); }
-.nav-tabs > li.active > a { border-top: 2px solid var(--jz-oro); color: var(--jz-burdeos); }
+.tag, .badge.bg-secondary, .label-default { background: var(--jz-burdeos) !important; }
+.nav-tabs .nav-link.active { border-top: 2px solid var(--jz-oro); color: var(--jz-burdeos); }
 .breadcrumb a { color: var(--jz-burdeos); }
-
-/* Cabecera de páginas / hero */
-.toolbar .breadcrumb { background: transparent; }
-[role="main"], .main { background: #fff; }
 
 /* Pie */
 .site-footer { background: var(--jz-burdeos-osc) !important; color: var(--jz-crema); }
@@ -53,4 +51,4 @@ a:hover { color: var(--jz-burdeos-osc); }
 
 /* Detalles tipográficos */
 h1, h2, h3 { color: var(--jz-tinta); }
-.hero, .module-heading { border-left: 3px solid var(--jz-oro); padding-left: .6rem; }
+.module-heading { border-left: 3px solid var(--jz-oro); padding-left: .6rem; }
