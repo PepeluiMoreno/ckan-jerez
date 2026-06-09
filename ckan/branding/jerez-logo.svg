@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 56" role="img" aria-label="Datos Abiertos de Jerez">
+  <!-- Logo propio de marca para el portal de datos abiertos de Jerez.
+       Sustituible por el logotipo oficial dejando un fichero con este mismo nombre. -->
+  <defs>
+    <style>
+      .crema { fill: #F4ECD8; }
+      .oro   { fill: #C8A24B; }
+      .sub   { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 8px; letter-spacing: 3.2px; }
+      .word  { font-family: Georgia, 'Times New Roman', serif; font-size: 27px; font-weight: 700; letter-spacing: 0.5px; }
+    </style>
+  </defs>
+
+  <!-- glifo: tres nodos enlazados (datos abiertos) -->
+  <g transform="translate(6,10)">
+    <line x1="9" y1="9" x2="27" y2="4"  stroke="#C8A24B" stroke-width="2"/>
+    <line x1="9" y1="9" x2="24" y2="30" stroke="#C8A24B" stroke-width="2"/>
+    <line x1="27" y1="4" x2="24" y2="30" stroke="#C8A24B" stroke-width="2"/>
+    <circle cx="9"  cy="9"  r="6" class="crema"/>
+    <circle cx="27" cy="4"  r="5" class="oro"/>
+    <circle cx="24" cy="30" r="4.5" class="oro"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="50" y="20" class="sub crema">DATOS ABIERTOS</text>
+  <text x="50" y="46" class="word crema">Jerez</text>
+</svg>

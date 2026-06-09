@@ -1,0 +1,56 @@
+/* Tema de marca de ckan-jerez sobre el CKAN estándar.
+   Paleta: burdeos (vino de Jerez), dorado y crema. Se inyecta vía
+   ckan.site_custom_css (config_option_update) en el script de inicialización. */
+
+:root {
+  --jz-burdeos: #6E1423;
+  --jz-burdeos-osc: #4A0D18;
+  --jz-oro: #C8A24B;
+  --jz-crema: #F4ECD8;
+  --jz-tinta: #2B2B2B;
+}
+
+/* Cabeceras */
+.account-masthead { background: var(--jz-burdeos-osc) !important; }
+.masthead,
+.masthead .navbar { background: var(--jz-burdeos) !important; }
+.masthead .navbar-brand,
+.masthead .nav > li > a,
+.masthead .navbar-nav > li > a { color: var(--jz-crema) !important; }
+.masthead .nav > li > a:hover,
+.masthead .navbar-nav > li > a:hover { color: var(--jz-oro) !important; }
+.masthead .navbar-nav > .active > a,
+.masthead .nav .active a { color: #fff !important; border-bottom: 2px solid var(--jz-oro); }
+
+/* Caja de búsqueda de la portada */
+.homepage .module-search .search-giant input { border: 2px solid var(--jz-oro); }
+.homepage [role="main"], .homepage .module-search { }
+
+/* Botones primarios y de acción */
+.btn-primary,
+.btn-primary:focus {
+  background: var(--jz-burdeos) !important;
+  border-color: var(--jz-burdeos-osc) !important;
+}
+.btn-primary:hover { background: var(--jz-burdeos-osc) !important; }
+.btn-default:hover { border-color: var(--jz-oro) !important; color: var(--jz-burdeos) !important; }
+
+/* Enlaces y acentos */
+a { color: var(--jz-burdeos); }
+a:hover { color: var(--jz-burdeos-osc); }
+.tag, .label-default { background: var(--jz-burdeos); }
+.nav-tabs > li.active > a { border-top: 2px solid var(--jz-oro); color: var(--jz-burdeos); }
+.breadcrumb a { color: var(--jz-burdeos); }
+
+/* Cabecera de páginas / hero */
+.toolbar .breadcrumb { background: transparent; }
+[role="main"], .main { background: #fff; }
+
+/* Pie */
+.site-footer { background: var(--jz-burdeos-osc) !important; color: var(--jz-crema); }
+.site-footer a, .site-footer label { color: var(--jz-crema) !important; }
+.site-footer a:hover { color: var(--jz-oro) !important; }
+
+/* Detalles tipográficos */
+h1, h2, h3 { color: var(--jz-tinta); }
+.hero, .module-heading { border-left: 3px solid var(--jz-oro); padding-left: .6rem; }
