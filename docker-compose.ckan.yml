@@ -14,7 +14,7 @@ services:
   ckan:
     build:
       context: ./ckan
-    container_name: ${APP_PREFIX:-ckanjerez}_ckan
+    container_name: ckan-web
     restart: unless-stopped
     depends_on:
       ckan-db: { condition: service_healthy }
@@ -55,7 +55,7 @@ services:
   # ── PostgreSQL + PostGIS (BD de CKAN + DataStore) ───────────────────────────
   ckan-db:
     image: postgis/postgis:16-3.4
-    container_name: ${APP_PREFIX:-ckanjerez}_ckan_db
+    container_name: ckan-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ckan
@@ -76,7 +76,7 @@ services:
   # ── Solr 9 con soporte espacial (índice de búsqueda de CKAN) ────────────────
   ckan-solr:
     image: ckan/ckan-solr:2.11-solr9-spatial
-    container_name: ${APP_PREFIX:-ckanjerez}_ckan_solr
+    container_name: ckan-solr
     restart: unless-stopped
     volumes:
       - ckan_solr:/var/solr
@@ -92,7 +92,7 @@ services:
   # ── Redis (cola/caché de CKAN) ──────────────────────────────────────────────
   ckan-redis:
     image: redis:7
-    container_name: ${APP_PREFIX:-ckanjerez}_ckan_redis
+    container_name: ckan-redis
     restart: unless-stopped
     volumes:
       - ckan_redis:/data

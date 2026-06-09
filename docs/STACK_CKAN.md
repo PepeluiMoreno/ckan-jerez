@@ -9,7 +9,7 @@ Traefik, igual que el panel `ckan-mgr.pepelui.es`.
 
 | Servicio          | Imagen                              | Función                          |
 |-------------------|-------------------------------------|----------------------------------|
-| `ckan`            | `ckan-jerez/ckan:2.11` (build)      | Web CKAN + extensiones           |
+| `ckan`            | build local (`ckan/Dockerfile`)      | Web CKAN + extensiones           |
 | `ckan-db`         | `postgis/postgis:16-3.4`            | BD de CKAN + DataStore + PostGIS |
 | `ckan-solr`       | `ckan/ckan-solr:2.11-solr9-spatial` | Índice de búsqueda (spatial)     |
 | `ckan-redis`      | `redis:7`                           | Colas / caché                    |
@@ -35,7 +35,7 @@ docker compose --env-file .env.production \
 
 ## Primer arranque (automático)
 
-El contenedor `ckan` se **autoinicializa** en cada arranque mediante
+El contenedor `ckan-web` se **autoinicializa** en cada arranque mediante
 `ckan/setup/60_bootstrap.sh` (idempotente): aplica migraciones, fija los permisos
 del DataStore, crea el usuario sysadmin (`CKAN_SYSADMIN_*`) si no existe y
 reconstruye el índice de búsqueda la primera vez. No hace falta ejecutar comandos
