@@ -46,11 +46,11 @@ services:
       - "traefik.http.routers.ckanjerezckan.tls.certresolver=letsencrypt"
       - "traefik.http.services.ckanjerezckan.loadbalancer.server.port=5000"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:5000/api/3/action/status_show"]
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/api/3/action/status_show', timeout=5)\" || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 5
-      start_period: 120s
+      retries: 6
+      start_period: 240s
 
   # ── PostgreSQL + PostGIS (BD de CKAN + DataStore) ───────────────────────────
   ckan-db:
@@ -83,7 +83,7 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8983/solr/ckan/admin/ping || exit 1"]
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/localhost/8983' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5

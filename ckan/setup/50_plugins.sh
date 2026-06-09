@@ -1,23 +1,28 @@
 #!/bin/bash
 # Configura las extensiones de ckan-jerez en el .ini en cada arranque.
-# Idempotente: ckan config-tool sobrescribe la clave si ya existe.
-
+# Idempotente. spatial se activa SOLO si la extensión importa, para que un fallo
+# de la extensión no impida arrancar CKAN.
+set -e
 
 CKAN_INI="${CKAN_INI:-$APP_DIR/ckan.ini}"
 
-# Plugins activos. Orden recomendado: vistas y datastore primero, luego las
-# extensiones. envvars permite seguir configurando por variables CKAN__*.
-# NOTA: spatial_metadata/spatial_query NO se activan aún — requieren inicializar
-# la tabla PostGIS (ckan spatial initdb) y un Solr con campo espacial; se añadirán
-# en una segunda fase. ckanext-spatial está instalado, solo no activado.
-PLUGINS="envvars image_view text_view datatables_view datastore \
-dcat structured_data"
+PLUGINS="envvars image_view text_view datatables_view datastore dcat structured_data"
+
+SPATIAL_OK=0
+if python3 -c "import ckanext.spatial" 2>/dev/null; then
+    PLUGINS="$PLUGINS spatial_metadata spatial_query"
+    SPATIAL_OK=1
+fi
 
 ckan config-tool "$CKAN_INI" "ckan.plugins = $PLUGINS"
 
-# ── DCAT ──────────────────────────────────────────────────────────────────
-# Perfil europeo; el exportador de ckan-jerez ya emite metadatos DCAT.
+# DCAT: perfil europeo; el exportador de ckan-jerez ya emite metadatos DCAT.
 ckan config-tool "$CKAN_INI" "ckanext.dcat.rdf.profiles = euro_dcat_ap_3"
 
-echo "[ckan-jerez] plugins y extensiones configurados: $PLUGINS"
-exit 0
+# Spatial / GIS: solo si la extensión está disponible.
+if [ "$SPATIAL_OK" = 1 ]; then
+    ckan config-tool "$CKAN_INI" "ckanext.spatial.search_backend = solr-spatial-field"
+    ckan config-tool "$CKAN_INI" "ckan.spatial.srid = 4326"
+fi
+
+echo "[ckan-jerez] plugins configurados (spatial=$SPATIAL_OK): $PLUGINS"
