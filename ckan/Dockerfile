@@ -17,19 +17,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Extensiones (se instalan en el venv de CKAN, $APP_DIR/../venv vía pip de la imagen base).
-# Se fijan a las ramas compatibles con CKAN 2.11.
-RUN pip install --no-cache-dir \
-        ckanext-dcat \
-        ckanext-scheming \
-        ckanext-harvest \
-        ckanext-spatial
-
-# Requisitos extra de las extensiones (parsers DCAT, geo, etc.).
-RUN pip install --no-cache-dir \
-        -r https://raw.githubusercontent.com/ckan/ckanext-dcat/master/requirements.txt \
-        -r https://raw.githubusercontent.com/ckan/ckanext-spatial/master/requirements.txt \
-    || echo "AVISO: revisa los requirements de las extensiones para la versión fijada"
+# Extensiones. ckanext-dcat está en PyPI (arrastra sus dependencias).
+# ckanext-spatial (GIS) NO está en PyPI: se instala desde git con sus requisitos
+# (GEOS ya disponible vía libgeos-dev). harvest y scheming se añadirán más adelante
+# (harvest necesita worker; scheming, un esquema propio).
+RUN pip install --no-cache-dir ckanext-dcat
+RUN pip install --no-cache-dir "git+https://github.com/ckan/ckanext-spatial.git@master" \
+    && pip install --no-cache-dir -r "https://raw.githubusercontent.com/ckan/ckanext-spatial/master/requirements.txt"
 
 # Hooks de arranque (la imagen base ejecuta /docker-entrypoint.d en orden):
 #   50_plugins   → activa plugins y ajustes de extensiones en el .ini

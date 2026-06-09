@@ -13,10 +13,10 @@ Traefik, igual que el panel `ckan-mgr.pepelui.es`.
 | `ckan-db`         | `postgis/postgis:16-3.4`            | BD de CKAN + DataStore + PostGIS |
 | `ckan-solr`       | `ckan/ckan-solr:2.11-solr9-spatial` | Índice de búsqueda (spatial)     |
 | `ckan-redis`      | `redis:7`                           | Colas / caché                    |
-| `ckan-datapusher` | `ckan/datapusher:0.0.20`            | Carga tabular al DataStore       |
 
-La imagen `ckan` añade sobre la base oficial: **ckanext-dcat** (DCAT-AP),
-**ckanext-spatial** (GIS), **ckanext-harvest** y **ckanext-scheming**.
+La imagen `ckan` añade sobre la base oficial **ckanext-dcat** (DCAT-AP, desde
+PyPI) y **ckanext-spatial** (GIS, desde git). harvest y scheming se añadirán más
+adelante (harvest requiere un worker; scheming, un esquema DCAT-AP-ES propio).
 
 ## Requisitos en el host
 

@@ -9,9 +9,7 @@ CKAN_INI="${CKAN_INI:-$APP_DIR/ckan.ini}"
 # extensiones. envvars permite seguir configurando por variables CKAN__*.
 PLUGINS="envvars image_view text_view datatables_view datastore \
 dcat structured_data \
-spatial_metadata spatial_query \
-harvest ckan_harvester \
-scheming_datasets"
+spatial_metadata spatial_query"
 
 ckan config-tool "$CKAN_INI" "ckan.plugins = $PLUGINS"
 
@@ -23,8 +21,5 @@ ckan config-tool "$CKAN_INI" "ckanext.dcat.rdf.profiles = euro_dcat_ap_3"
 # Backend de búsqueda espacial sobre el Solr con soporte spatial.
 ckan config-tool "$CKAN_INI" "ckanext.spatial.search_backend = solr-spatial-field"
 ckan config-tool "$CKAN_INI" "ckan.spatial.srid = 4326"
-
-# ── Scheming (base para DCAT-AP-ES) ──────────────────────────────────────────
-ckan config-tool "$CKAN_INI" "scheming.dataset_schemas = ckanext.scheming:camel_photos.yaml"
 
 echo "[ckan-jerez] plugins y extensiones configurados: $PLUGINS"
