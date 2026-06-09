@@ -113,7 +113,7 @@ jobs:
             else
               echo "[ckan] variables CKAN ausentes: se despliega solo la app (sin stack CKAN)."
             fi
-            $COMPOSE pull
+            $COMPOSE pull --ignore-buildable 2>/dev/null || true
             # Arranca/actualiza el servicio web (uvicorn): sirve panel /, API /api,
             # webhook /webhooks/odmgr y /health. (Antes solo corría un smoke de worker
             # y NUNCA se levantaba el servidor -> Traefik 503 sin backend.)
