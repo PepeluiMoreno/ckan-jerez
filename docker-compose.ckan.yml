@@ -31,7 +31,6 @@ services:
       CKAN___BEAKER__SESSION__SECRET: ${CKAN_SESSION_SECRET}
       CKAN___API_TOKEN__JWT__ENCODE__SECRET: ${CKAN_JWT_SECRET}
       CKAN___API_TOKEN__JWT__DECODE__SECRET: ${CKAN_JWT_SECRET}
-      CKAN__DATAPUSHER__API_TOKEN: ${CKAN_DATAPUSHER_TOKEN:-}
       CKAN_SYSADMIN_NAME: ${CKAN_SYSADMIN_NAME:-admin}
       CKAN_SYSADMIN_PASSWORD: ${CKAN_SYSADMIN_PASSWORD}
       CKAN_SYSADMIN_EMAIL: ${CKAN_SYSADMIN_EMAIL:-admin@pepelui.es}
@@ -105,19 +104,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-
-  # ── DataPusher (carga ficheros tabulares al DataStore) ──────────────────────
-  ckan-datapusher:
-    image: ckan/datapusher:0.0.20
-    container_name: ${APP_PREFIX:-ckanjerez}_ckan_datapusher
-    restart: unless-stopped
-    networks:
-      - internal
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8800 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
 
 volumes:
   ckan_storage:

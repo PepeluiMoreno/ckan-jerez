@@ -132,7 +132,7 @@ jobs:
             echo "[health] OK — ckan-jerez sirviendo"
             if [ "$CKAN_STACK" = 1 ]; then
               echo "[ckan] levantando el stack CKAN (build de la imagen + servicios)…"
-              $COMPOSE up -d --build ckan-db ckan-solr ckan-redis ckan-datapusher ckan
+              $COMPOSE up -d --build ckan-db ckan-solr ckan-redis ckan
               echo "[ckan] stack lanzado. CKAN se autoinicializa (bootstrap) y tarda ~1-2 min en responder en ckan.pepelui.es."
             fi
             docker image prune -f
