@@ -37,9 +37,8 @@ createApp({
   setup() {
     const view = ref('recursos')
     const nav = [
-      { id:'alta', label:'🔑 Alta en ODM' },
       { id:'recursos', label:'🗂️ Recursos' },
-      { id:'actividad', label:'📨 Entregas' },
+      { id:'actividad', label:'📨 Recepciones' },
     ]
     const err = ref('')
     const busy = ref(false)
@@ -56,6 +55,22 @@ createApp({
     const odmPubs = ref([])
 
     const filtros = reactive({ q:'', pub:'', soloSus:true })
+    const filtrosRec = reactive({ desde:'', hasta:'', dataset:'', estado:'' })
+    const recepcionesFiltradas = computed(() => {
+      const desde = filtrosRec.desde ? new Date(filtrosRec.desde+'T00:00:00') : null
+      const hasta = filtrosRec.hasta ? new Date(filtrosRec.hasta+'T23:59:59') : null
+      const ds = (filtrosRec.dataset||'').toLowerCase()
+      return (notifications.value||[]).filter(n => {
+        const t = n.sentAt ? new Date(n.sentAt.replace(' ','T')+(/[zZ+]/.test(n.sentAt)?'':'Z')) : null
+        if (desde && (!t || t < desde)) return false
+        if (hasta && (!t || t > hasta)) return false
+        if (ds && !String(n.datasetId||'').toLowerCase().includes(ds)) return false
+        const ok = n.statusCode>=200 && n.statusCode<300
+        if (filtrosRec.estado==='ok' && !ok) return false
+        if (filtrosRec.estado==='error' && ok) return false
+        return true
+      })
+    })
     const modal = reactive({ open:false, titulo:'', texto:'' })
     const help = ref(false)
     const onboarding = reactive({ tiene_token:false, operativa:false, solicitud:null, app_username:null, token_origen:null, token_error:null, app_name:'ckan-jerez', eventos:[] })
@@ -157,7 +172,7 @@ createApp({
       proposeDone.value=null
       proposeDone.value = await api('/odm/propose', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(proposeForm)})
     }) }
-    const loaders = { recursos: loadRecursos, actividad: loadActividad, alta: loadOnboarding }
+    const loaders = { recursos: loadRecursos, actividad: loadActividad }
     function go(id) { view.value = id; if (loaders[id]) run(loaders[id]) }
 
     // ── acciones ──
@@ -243,7 +258,7 @@ createApp({
     }) }
 
     onMounted(() => {
-      loadStatus(); run(loadRecursos)
+      loadStatus(); run(loadOnboarding); run(loadRecursos)
       api('/version').then(d=>appVersion.value=d.version).catch(()=>{})
       setInterval(loadStatus, 15000)
     })
@@ -255,6 +270,7 @@ createApp({
              esNodriza, expandidas, toggleNodriza, hijosDe, topNivel,
              go, fmtAgo, enOdm, suscribir, desuscribir, refrescar, borrarRecurso, clonar,
              help, onboarding, altaForm, tokenInput, proposeForm, proposeDone, solicitudPendiente,
+             filtrosRec, recepcionesFiltradas,
              enviarSolicitud, guardarToken, proponerRecurso, loadOnboarding,
              getTemplate, pickPub, addParam, delParam, previewSource, createSource }
   },
@@ -291,6 +307,53 @@ createApp({
   <div class="flex-1 overflow-y-auto p-6">
     <div v-if="err" class="card border-red-700 bg-red-900/40 text-red-200 px-4 py-2.5 mb-4 text-sm">⚠️ {{ err }}</div>
 
+    <!-- #10 Gate de alta: bloquea la app hasta estar operativa -->
+    <div v-if="!onboarding.operativa" class="fixed inset-0 z-50 bg-black/75 overflow-y-auto p-6">
+      <div class="max-w-2xl mx-auto">
+        <h2 class="text-xl font-bold text-gray-100 mb-1">Alta en OpenDataManager</h2>
+        <p class="text-sm text-gray-400 mb-5">Esta aplicación necesita el alta en ODM para funcionar: solicita el alta → ODM la aprueba y emite un token → pégalo aquí. Hasta entonces no puedes operar.</p>
+      <div class="card p-5 mb-5">
+        <div class="flex items-center gap-2 text-sm">
+          <span class="pill" :style="onboarding.operativa ? 'background:#064e3b;color:#34d399' : 'background:#78350f;color:#fbbf24'">
+            {{ onboarding.operativa ? '✓ aplicación operativa' : (onboarding.tiene_token ? 'token guardado' : 'sin alta') }}
+          </span>
+          <span v-if="onboarding.app_username" class="text-gray-400">como «{{ onboarding.app_username }}»</span>
+          <span v-if="onboarding.token_origen" class="text-gray-600 text-xs ml-auto">token: {{ onboarding.token_origen }}</span>
+        </div>
+        <p v-if="onboarding.token_error" class="text-xs text-red-300 mt-2">El token guardado no valida: {{ onboarding.token_error }}</p>
+      </div>
+
+      <div v-if="!onboarding.operativa" class="card p-5 mb-5">
+        <h3 class="text-sm font-semibold text-gray-200 mb-1">1 · Solicitar alta</h3>
+        <p class="text-xs text-gray-400 mb-3">Registra la solicitud en ODM. Queda pendiente hasta que un administrador la apruebe.</p>
+        <div class="grid grid-cols-3 gap-3">
+          <label class="text-xs text-gray-400">Nombre<input v-model="altaForm.nombre" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+          <label class="text-xs text-gray-400">Contacto<input v-model="altaForm.contacto" placeholder="email" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+          <label class="text-xs text-gray-400">Propósito<input v-model="altaForm.proposito" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+        </div>
+        <div class="mt-3"><button class="btn btn-primary" :disabled="busy || !altaForm.nombre || solicitudPendiente" @click="enviarSolicitud">Enviar solicitud</button></div>
+        <div v-if="onboarding.solicitud" class="card px-4 py-2.5 text-sm mt-3"
+             :class="onboarding.solicitud.estado==='rechazada' ? 'border-red-700 bg-red-900/30 text-red-200' : 'border-blue-700 bg-blue-900/30 text-blue-200'">
+          Solicitud «{{ onboarding.solicitud.nombre }}» —
+          <b>{{ onboarding.solicitud.estado==='rechazada' ? 'rechazada' : (onboarding.solicitud.estado==='aprobada' ? 'aprobada' : 'Esperando aprobación') }}</b>.
+          <span v-if="solicitudPendiente"> El aviso llega por webhook en cuanto ODM la resuelva (no hace falta preguntar).</span>
+          <span v-if="onboarding.solicitud.estado==='rechazada' && onboarding.solicitud.motivo"> Motivo: {{ onboarding.solicitud.motivo }}. Corrige y vuelve a enviar.</span>
+        </div>
+      </div>
+
+      <div v-if="!onboarding.operativa" class="card p-5 mb-5">
+        <h3 class="text-sm font-semibold text-gray-200 mb-1">2 · Introducir el token</h3>
+        <p class="text-xs text-gray-400 mb-3">Cuando ODM apruebe el alta te dará un token (se muestra una sola vez). Pégalo aquí.</p>
+        <div class="flex gap-2">
+          <input v-model="tokenInput" placeholder="odm_..." class="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200">
+          <button class="btn btn-primary whitespace-nowrap" :disabled="busy || !tokenInput" @click="guardarToken">Guardar token</button>
+        </div>
+        <p class="text-xs text-gray-500 mt-2">Para que sobreviva a redespliegues, muévelo luego al secreto <code>ODM_TOKEN</code>.</p>
+      </div>
+
+      </div>
+    </div>
+
     <!-- Recursos -->
     <div v-if="view==='recursos'">
       <div class="flex items-center justify-between mb-1">
@@ -298,6 +361,15 @@ createApp({
         <button class="btn btn-primary" @click="showWizard = !showWizard">{{ showWizard ? 'Cerrar asistente' : '+ Nuevo recurso' }}</button>
       </div>
       <p class="text-sm text-gray-400 mb-5">Orígenes de datos de los que se abastece CKAN-Jerez.</p>
+
+      <div v-if="onboarding.eventos && onboarding.eventos.length" class="card p-5 mb-5">
+        <h3 class="text-sm font-semibold text-gray-200 mb-2">Avisos de ODM</h3>
+        <div v-for="(e,i) in onboarding.eventos" :key="i" class="text-sm mb-1"
+             :class="e.estadoAprobacion==='rechazado' ? 'text-red-300' : 'text-gray-300'">
+          <b>{{ e.name || e.resourceId }}</b> — {{ e.estadoAprobacion }}<span v-if="e.motivoRechazo"> · motivo: {{ e.motivoRechazo }}</span>
+        </div>
+      </div>
+
 
       <div class="card p-5 mb-6">
         <div class="flex flex-wrap items-center gap-3 mb-4">
@@ -354,6 +426,26 @@ createApp({
             </template>
             <tr v-if="!topNivel.length && !pendientes.length"><td colspan="5" class="text-gray-500">Sin recursos con ese filtro.</td></tr>
           </tbody></table>
+      </div>
+
+      <div v-if="onboarding.operativa" class="card p-5">
+        <h3 class="text-sm font-semibold text-gray-200 mb-1">Proponer un recurso al catálogo</h3>
+        <p class="text-xs text-gray-400 mb-3">Propones una fuente Web Tree. ODM la registra como <b>pendiente</b>; un administrador la aprueba antes de que se ejecute.</p>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="text-xs text-gray-400">Nombre<input v-model="proposeForm.name" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+          <label class="text-xs text-gray-400">URL raíz<input v-model="proposeForm.root_url" placeholder="https://…" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+          <label class="text-xs text-gray-400">¿Qué obtener de cada documento?
+            <select v-model="proposeForm.variante" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+              <option value="Censo documental">Solo listar los documentos (no descarga)</option>
+              <option value="Extracción de datos">Extraer los datos de sus tablas</option>
+              <option value="Extracción con receta">Extraer campos concretos (receta)</option></select>
+            <span class="block text-[11px] text-gray-500 mt-0.5">Si no estás seguro, deja «solo listar».</span></label>
+          <label class="text-xs text-gray-400">Descripción<input v-model="proposeForm.descripcion" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+        </div>
+        <div class="mt-3"><button class="btn btn-primary" :disabled="busy || !proposeForm.name || !proposeForm.root_url" @click="proponerRecurso">Proponer recurso</button></div>
+        <div v-if="proposeDone" class="card border-green-700 bg-green-900/30 text-green-200 px-4 py-2.5 text-sm mt-3">
+          ✅ Propuesto «{{ proposeDone.name }}» — pendiente de aprobación en ODM.
+        </div>
       </div>
 
       <!-- Asistente (a demanda) -->
@@ -427,90 +519,25 @@ createApp({
       </div>
     </div>
 
-    <!-- Alta en ODM -->
-    <div v-else-if="view==='alta'">
-      <h2 class="text-xl font-bold text-gray-100 mb-1">Alta en OpenDataManager</h2>
-      <p class="text-sm text-gray-400 mb-5">Ciclo del consumidor: solicitar el alta → ODM la aprueba y emite un token → con el token, suscribirse y proponer recursos.</p>
-
-      <div v-if="onboarding.eventos && onboarding.eventos.length" class="card p-5 mb-5">
-        <h3 class="text-sm font-semibold text-gray-200 mb-2">Avisos de ODM</h3>
-        <div v-for="(e,i) in onboarding.eventos" :key="i" class="text-sm mb-1"
-             :class="e.estadoAprobacion==='rechazado' ? 'text-red-300' : 'text-gray-300'">
-          <b>{{ e.name || e.resourceId }}</b> — {{ e.estadoAprobacion }}<span v-if="e.motivoRechazo"> · motivo: {{ e.motivoRechazo }}</span>
-        </div>
-      </div>
-
-      <div class="card p-5 mb-5">
-        <div class="flex items-center gap-2 text-sm">
-          <span class="pill" :style="onboarding.operativa ? 'background:#064e3b;color:#34d399' : 'background:#78350f;color:#fbbf24'">
-            {{ onboarding.operativa ? '✓ aplicación operativa' : (onboarding.tiene_token ? 'token guardado' : 'sin alta') }}
-          </span>
-          <span v-if="onboarding.app_username" class="text-gray-400">como «{{ onboarding.app_username }}»</span>
-          <span v-if="onboarding.token_origen" class="text-gray-600 text-xs ml-auto">token: {{ onboarding.token_origen }}</span>
-        </div>
-        <p v-if="onboarding.token_error" class="text-xs text-red-300 mt-2">El token guardado no valida: {{ onboarding.token_error }}</p>
-      </div>
-
-      <div v-if="!onboarding.operativa" class="card p-5 mb-5">
-        <h3 class="text-sm font-semibold text-gray-200 mb-1">1 · Solicitar alta</h3>
-        <p class="text-xs text-gray-400 mb-3">Registra la solicitud en ODM. Queda pendiente hasta que un administrador la apruebe.</p>
-        <div class="grid grid-cols-3 gap-3">
-          <label class="text-xs text-gray-400">Nombre<input v-model="altaForm.nombre" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
-          <label class="text-xs text-gray-400">Contacto<input v-model="altaForm.contacto" placeholder="email" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
-          <label class="text-xs text-gray-400">Propósito<input v-model="altaForm.proposito" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
-        </div>
-        <div class="mt-3"><button class="btn btn-primary" :disabled="busy || !altaForm.nombre || solicitudPendiente" @click="enviarSolicitud">Enviar solicitud</button></div>
-        <div v-if="onboarding.solicitud" class="card px-4 py-2.5 text-sm mt-3"
-             :class="onboarding.solicitud.estado==='rechazada' ? 'border-red-700 bg-red-900/30 text-red-200' : 'border-blue-700 bg-blue-900/30 text-blue-200'">
-          Solicitud «{{ onboarding.solicitud.nombre }}» —
-          <b>{{ onboarding.solicitud.estado==='rechazada' ? 'rechazada' : (onboarding.solicitud.estado==='aprobada' ? 'aprobada' : 'Esperando aprobación') }}</b>.
-          <span v-if="solicitudPendiente"> El aviso llega por webhook en cuanto ODM la resuelva (no hace falta preguntar).</span>
-          <span v-if="onboarding.solicitud.estado==='rechazada' && onboarding.solicitud.motivo"> Motivo: {{ onboarding.solicitud.motivo }}. Corrige y vuelve a enviar.</span>
-        </div>
-      </div>
-
-      <div v-if="!onboarding.operativa" class="card p-5 mb-5">
-        <h3 class="text-sm font-semibold text-gray-200 mb-1">2 · Introducir el token</h3>
-        <p class="text-xs text-gray-400 mb-3">Cuando ODM apruebe el alta te dará un token (se muestra una sola vez). Pégalo aquí.</p>
-        <div class="flex gap-2">
-          <input v-model="tokenInput" placeholder="odm_..." class="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200">
-          <button class="btn btn-primary whitespace-nowrap" :disabled="busy || !tokenInput" @click="guardarToken">Guardar token</button>
-        </div>
-        <p class="text-xs text-gray-500 mt-2">Para que sobreviva a redespliegues, muévelo luego al secreto <code>ODM_TOKEN</code>.</p>
-      </div>
-
-      <div v-if="onboarding.operativa" class="card p-5">
-        <h3 class="text-sm font-semibold text-gray-200 mb-1">Proponer un recurso al catálogo</h3>
-        <p class="text-xs text-gray-400 mb-3">Propones una fuente Web Tree. ODM la registra como <b>pendiente</b>; un administrador la aprueba antes de que se ejecute.</p>
-        <div class="grid grid-cols-2 gap-3">
-          <label class="text-xs text-gray-400">Nombre<input v-model="proposeForm.name" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
-          <label class="text-xs text-gray-400">URL raíz<input v-model="proposeForm.root_url" placeholder="https://…" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
-          <label class="text-xs text-gray-400">¿Qué obtener de cada documento?
-            <select v-model="proposeForm.variante" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
-              <option value="Censo documental">Solo listar los documentos (no descarga)</option>
-              <option value="Extracción de datos">Extraer los datos de sus tablas</option>
-              <option value="Extracción con receta">Extraer campos concretos (receta)</option></select>
-            <span class="block text-[11px] text-gray-500 mt-0.5">Si no estás seguro, deja «solo listar».</span></label>
-          <label class="text-xs text-gray-400">Descripción<input v-model="proposeForm.descripcion" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
-        </div>
-        <div class="mt-3"><button class="btn btn-primary" :disabled="busy || !proposeForm.name || !proposeForm.root_url" @click="proponerRecurso">Proponer recurso</button></div>
-        <div v-if="proposeDone" class="card border-green-700 bg-green-900/30 text-green-200 px-4 py-2.5 text-sm mt-3">
-          ✅ Propuesto «{{ proposeDone.name }}» — pendiente de aprobación en ODM.
-        </div>
-      </div>
-    </div>
-
     <!-- Actividad -->
     <div v-else-if="view==='actividad'">
-      <h2 class="text-xl font-bold text-gray-100 mb-1">Entregas</h2>
-      <p class="text-sm text-gray-400 mb-5">Webhooks que ODM ha entregado a CKAN-Jerez con datos nuevos.</p>
+      <h2 class="text-xl font-bold text-gray-100 mb-1">Recepciones</h2>
+      <p class="text-sm text-gray-400 mb-5">Entregas que ODM ha enviado por webhook a CKAN-Jerez con datos nuevos.</p>
       <div class="card p-5 mb-6">
+        <div class="flex flex-wrap items-end gap-3 mb-4">
+          <label class="text-xs text-gray-400">Desde<input type="date" v-model="filtrosRec.desde" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+          <label class="text-xs text-gray-400">Hasta<input type="date" v-model="filtrosRec.hasta" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+          <label class="text-xs text-gray-400">Dataset<input v-model="filtrosRec.dataset" placeholder="id…" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+          <label class="text-xs text-gray-400">Estado<select v-model="filtrosRec.estado" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"><option value="">todos</option><option value="ok">OK (2xx)</option><option value="error">error</option></select></label>
+          <button class="btn btn-ghost" @click="filtrosRec.desde='';filtrosRec.hasta='';filtrosRec.dataset='';filtrosRec.estado=''">Limpiar</button>
+          <span class="text-xs text-gray-500 ml-auto">{{ recepcionesFiltradas.length }} / {{ notifications.length }}</span>
+        </div>
         <table class="w-full"><thead><tr><th>Enviado</th><th>Dataset</th><th>HTTP</th><th>Error</th></tr></thead>
-          <tbody><tr v-for="n in notifications" :key="n.id">
+          <tbody><tr v-for="n in recepcionesFiltradas" :key="n.id">
             <td class="text-gray-500">{{ fmtAgo(n.sentAt) }}</td><td>{{ n.datasetId || '—' }}</td>
             <td><span class="pill" :style="{background: n.statusCode>=200&&n.statusCode<300?'#064e3b':'#7f1d1d', color: n.statusCode>=200&&n.statusCode<300?'#34d399':'#f87171'}">{{ n.statusCode || '—' }}</span></td>
             <td class="text-red-300">{{ n.errorMessage || '' }}</td>
-          </tr><tr v-if="!notifications.length"><td colspan="4" class="text-gray-500">Sin entregas todavía.</td></tr></tbody></table>
+          </tr><tr v-if="!recepcionesFiltradas.length"><td colspan="4" class="text-gray-500">Sin recepciones con ese filtro.</td></tr></tbody></table>
       </div>
     </div>
   </div>
@@ -533,7 +560,7 @@ createApp({
       </div>
       <div class="text-sm text-gray-300 space-y-3 leading-relaxed">
         <p><b>ckan-jerez</b> es un <b>consumidor</b> de OpenDataManager (ODM): no produce datos, los recibe de ODM y los publica de forma homogénea en CKAN.</p>
-        <p class="text-gray-200 font-medium">Ciclo de vida (pestaña «Alta en ODM»)</p>
+        <p class="text-gray-200 font-medium">Ciclo de vida (diálogo de alta inicial)</p>
         <ol class="list-decimal ml-5 space-y-1">
           <li><b>Solicitar alta</b>: envías una solicitud a ODM; queda <i>pendiente</i>.</li>
           <li><b>Aprobación</b>: un administrador de ODM la aprueba y emite un <b>token</b> (visible una sola vez).</li>
