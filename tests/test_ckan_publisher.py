@@ -90,3 +90,12 @@ def test_handle_notification_publica_homogeneo():
 if __name__ == "__main__":
     import pytest as _pytest
     raise SystemExit(_pytest.main([__file__, "-q"]))
+
+
+def test_slugify_translitera_acentos_y_enie():
+    # Los acentos y la ñ se transliteran a ASCII (no se borran dejando guiones).
+    assert slugify("Información Económica") == "informacion-economica"
+    assert slugify("Subvenciones y Ñoño") == "subvenciones-y-nono"
+    # Caso real de un recurso de Jerez.
+    assert slugify("Jerez — A07-Información Económica — Ejecución del Gasto") \
+        == "jerez-a07-informacion-economica-ejecucion-del-gasto"

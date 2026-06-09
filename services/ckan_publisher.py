@@ -8,6 +8,7 @@ consumidor ve siempre lo mismo, da igual cómo se cosechó el dato.
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any, Optional, Protocol
 
 import requests
@@ -25,7 +26,14 @@ _MIME_BY_FORMAT = {
 
 
 def slugify(text: str, *, maxlen: int = 100) -> str:
-    s = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
+    # Translitera acentos y ñ a ASCII (á→a, ó→o, ñ→n) antes de slugificar, para
+    # no producir slugs rotos como "informaci-n-econ-mica".
+    ascii_text = (
+        unicodedata.normalize("NFKD", text or "")
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+    s = re.sub(r"[^a-z0-9]+", "-", ascii_text.lower()).strip("-")
     return s[:maxlen].strip("-") or "dataset"
 
 
