@@ -1,7 +1,7 @@
 #!/bin/bash
 # Configura las extensiones de ckan-jerez en el .ini en cada arranque.
 # Idempotente: ckan config-tool sobrescribe la clave si ya existe.
-set -e
+
 
 CKAN_INI="${CKAN_INI:-$APP_DIR/ckan.ini}"
 
@@ -23,3 +23,4 @@ ckan config-tool "$CKAN_INI" "ckanext.spatial.search_backend = solr-spatial-fiel
 ckan config-tool "$CKAN_INI" "ckan.spatial.srid = 4326"
 
 echo "[ckan-jerez] plugins y extensiones configurados: $PLUGINS"
+exit 0

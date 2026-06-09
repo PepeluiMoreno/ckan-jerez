@@ -2,13 +2,13 @@
 # Bootstrap idempotente de CKAN en cada arranque del contenedor. Deja la
 # instancia operativa sin intervención manual: esquema, permisos del DataStore,
 # usuario sysadmin e índice de búsqueda. Seguro de re-ejecutar.
-set -e
+# NO usa 'set -e': un fallo de cualquier paso NO debe impedir que CKAN arranque.
 
 CKAN_INI="${CKAN_INI:-$APP_DIR/ckan.ini}"
 MARKER="/var/lib/ckan/.bootstrap_done"
 
 echo "[bootstrap] aplicando migraciones…"
-ckan -c "$CKAN_INI" db upgrade
+ckan -c "$CKAN_INI" db upgrade || echo "[bootstrap] AVISO: db upgrade falló (se reintentará en el próximo arranque)"
 
 # DataStore: el usuario de solo lectura solo puede SELECT. Idempotente.
 if [ -n "$CKAN_DATASTORE_WRITE_URL" ]; then
@@ -43,3 +43,4 @@ if [ ! -f "$MARKER" ]; then
 fi
 
 echo "[bootstrap] completado."
+exit 0

@@ -134,5 +134,14 @@ jobs:
               echo "[ckan] levantando el stack CKAN (build de la imagen + servicios)…"
               $COMPOSE up -d --build ckan-db ckan-solr ckan-redis ckan
               echo "[ckan] stack lanzado. CKAN se autoinicializa (bootstrap) y tarda ~1-2 min en responder en ckan.pepelui.es."
+              echo "=== DIAGNÓSTICO CKAN (estado + logs) ==========================="
+              sleep 45
+              echo "--- docker ps (stack ckan) ---"
+              docker ps -a --filter "name=${APP_PREFIX:-ckanjerez}_ckan" --format '{{.Names}}  {{.Status}}' || true
+              echo "--- logs ckan (tail 150) ---"
+              docker logs "${APP_PREFIX:-ckanjerez}_ckan" --tail 150 2>&1 || true
+              echo "--- logs solr (tail 20) ---"
+              docker logs "${APP_PREFIX:-ckanjerez}_ckan_solr" --tail 20 2>&1 || true
+              echo "=== FIN DIAGNÓSTICO CKAN ========================================"
             fi
             docker image prune -f
