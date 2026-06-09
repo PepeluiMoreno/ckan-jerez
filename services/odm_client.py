@@ -103,7 +103,7 @@ Q_RESOURCE_EXECUTIONS = (
 Q_APP_NOTIFICATIONS = (
     "query Entregas($applicationId: String) {"
     "  applicationNotifications(applicationId: $applicationId) {"
-    "    id applicationId datasetId sentAt statusCode responseBody errorMessage"
+    "    id applicationId datasetId sentAt statusCode responseBody errorMessage publisher datasetName"
     "  }"
     "}"
 )

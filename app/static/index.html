@@ -55,7 +55,8 @@ createApp({
     const odmPubs = ref([])
 
     const filtros = reactive({ q:'', pub:'', soloSus:true })
-    const filtrosRec = reactive({ desde:'', hasta:'', dataset:'', estado:'' })
+    const filtrosRec = reactive({ desde:'', hasta:'', dataset:'', estado:'', pub:'' })
+    const publishersRec = computed(() => [...new Set((notifications.value||[]).map(n=>n.publisher).filter(Boolean))].sort())
     const recepcionesFiltradas = computed(() => {
       const desde = filtrosRec.desde ? new Date(filtrosRec.desde+'T00:00:00') : null
       const hasta = filtrosRec.hasta ? new Date(filtrosRec.hasta+'T23:59:59') : null
@@ -64,7 +65,8 @@ createApp({
         const t = n.sentAt ? new Date(n.sentAt.replace(' ','T')+(/[zZ+]/.test(n.sentAt)?'':'Z')) : null
         if (desde && (!t || t < desde)) return false
         if (hasta && (!t || t > hasta)) return false
-        if (ds && !String(n.datasetId||'').toLowerCase().includes(ds)) return false
+        if (ds && !String(n.datasetName||n.datasetId||'').toLowerCase().includes(ds)) return false
+        if (filtrosRec.pub && n.publisher !== filtrosRec.pub) return false
         const ok = n.statusCode>=200 && n.statusCode<300
         if (filtrosRec.estado==='ok' && !ok) return false
         if (filtrosRec.estado==='error' && ok) return false
@@ -270,7 +272,7 @@ createApp({
              esNodriza, expandidas, toggleNodriza, hijosDe, topNivel,
              go, fmtAgo, enOdm, suscribir, desuscribir, refrescar, borrarRecurso, clonar,
              help, onboarding, altaForm, tokenInput, proposeForm, proposeDone, solicitudPendiente,
-             filtrosRec, recepcionesFiltradas,
+             filtrosRec, recepcionesFiltradas, publishersRec,
              enviarSolicitud, guardarToken, proponerRecurso, loadOnboarding,
              getTemplate, pickPub, addParam, delParam, previewSource, createSource }
   },
@@ -405,9 +407,11 @@ createApp({
               </td>
               <td :style="{color: (lastOk[r.id] && (Date.now()-new Date(lastOk[r.id]+'Z').getTime())<3600000) ? '#34d399' : '#6b7280'}">{{ fmtAgo(lastOk[r.id]) }}</td>
               <td class="text-right whitespace-nowrap">
-                <button class="btn btn-ghost" :disabled="busy" @click="refrescar(r.id)">Refrescar</button>
-                <button class="btn btn-ghost ml-1" :disabled="busy" @click="clonar(r.id)">Clonar</button>
-                <button class="btn btn-ghost ml-1" :disabled="busy" @click="borrarRecurso(r.id, r.name)">Borrar</button>
+                <div style="display:inline-flex;align-items:center;gap:.125rem">
+                  <button :disabled="busy" @click="refrescar(r.id)" title="Refrescar" style="padding:.3rem;border-radius:.375rem;border:0;background:none;cursor:pointer;color:#9ca3af" class="hover:bg-gray-700"><svg style="width:1rem;height:1rem" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></button>
+                  <button :disabled="busy" @click="clonar(r.id)" title="Clonar" style="padding:.3rem;border-radius:.375rem;border:0;background:none;cursor:pointer;color:#9ca3af" class="hover:bg-gray-700"><svg style="width:1rem;height:1rem" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></button>
+                  <button :disabled="busy" @click="borrarRecurso(r.id, r.name)" title="Borrar" style="padding:.3rem;border-radius:.375rem;border:0;background:none;cursor:pointer;color:#6b7280" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#6b7280'"><svg style="width:1rem;height:1rem" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+                </div>
               </td>
             </tr>
             <tr v-for="c in (expandidas.has(r.id) ? hijosDe(r.id) : [])" :key="c.id" style="background:rgba(0,0,0,.25)">
@@ -419,8 +423,10 @@ createApp({
               </td>
               <td :style="{color: (lastOk[c.id] && (Date.now()-new Date(lastOk[c.id]+'Z').getTime())<3600000) ? '#34d399' : '#6b7280'}">{{ fmtAgo(lastOk[c.id]) }}</td>
               <td class="text-right whitespace-nowrap">
-                <button class="btn btn-ghost" :disabled="busy" @click="refrescar(c.id)">Refrescar</button>
-                <button class="btn btn-ghost ml-1" :disabled="busy" @click="borrarRecurso(c.id, c.name)">Borrar</button>
+                <div style="display:inline-flex;align-items:center;gap:.125rem">
+                  <button :disabled="busy" @click="refrescar(c.id)" title="Refrescar" style="padding:.3rem;border-radius:.375rem;border:0;background:none;cursor:pointer;color:#9ca3af" class="hover:bg-gray-700"><svg style="width:1rem;height:1rem" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></button>
+                  <button :disabled="busy" @click="borrarRecurso(c.id, c.name)" title="Borrar" style="padding:.3rem;border-radius:.375rem;border:0;background:none;cursor:pointer;color:#6b7280" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#6b7280'"><svg style="width:1rem;height:1rem" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+                </div>
               </td>
             </tr>
             </template>
@@ -527,17 +533,18 @@ createApp({
         <div class="flex flex-wrap items-end gap-3 mb-4">
           <label class="text-xs text-gray-400">Desde<input type="date" v-model="filtrosRec.desde" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
           <label class="text-xs text-gray-400">Hasta<input type="date" v-model="filtrosRec.hasta" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
-          <label class="text-xs text-gray-400">Dataset<input v-model="filtrosRec.dataset" placeholder="id…" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+          <label class="text-xs text-gray-400">Dataset<input v-model="filtrosRec.dataset" placeholder="nombre/id…" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+          <label class="text-xs text-gray-400">Publicador<select v-model="filtrosRec.pub" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"><option value="">todos</option><option v-for="p in publishersRec" :key="p" :value="p">{{ p }}</option></select></label>
           <label class="text-xs text-gray-400">Estado<select v-model="filtrosRec.estado" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"><option value="">todos</option><option value="ok">OK (2xx)</option><option value="error">error</option></select></label>
-          <button class="btn btn-ghost" @click="filtrosRec.desde='';filtrosRec.hasta='';filtrosRec.dataset='';filtrosRec.estado=''">Limpiar</button>
+          <button class="btn btn-ghost" @click="filtrosRec.desde='';filtrosRec.hasta='';filtrosRec.dataset='';filtrosRec.estado='';filtrosRec.pub=''">Limpiar</button>
           <span class="text-xs text-gray-500 ml-auto">{{ recepcionesFiltradas.length }} / {{ notifications.length }}</span>
         </div>
-        <table class="w-full"><thead><tr><th>Enviado</th><th>Dataset</th><th>HTTP</th><th>Error</th></tr></thead>
+        <table class="w-full"><thead><tr><th>Enviado</th><th>Publicador</th><th>Dataset</th><th>HTTP</th><th>Error</th></tr></thead>
           <tbody><tr v-for="n in recepcionesFiltradas" :key="n.id">
-            <td class="text-gray-500">{{ fmtAgo(n.sentAt) }}</td><td>{{ n.datasetId || '—' }}</td>
+            <td class="text-gray-500">{{ fmtAgo(n.sentAt) }}</td><td class="text-gray-400">{{ n.publisher || '—' }}</td><td :title="n.datasetId">{{ n.datasetName || n.datasetId || '—' }}</td>
             <td><span class="pill" :style="{background: n.statusCode>=200&&n.statusCode<300?'#064e3b':'#7f1d1d', color: n.statusCode>=200&&n.statusCode<300?'#34d399':'#f87171'}">{{ n.statusCode || '—' }}</span></td>
             <td class="text-red-300">{{ n.errorMessage || '' }}</td>
-          </tr><tr v-if="!recepcionesFiltradas.length"><td colspan="4" class="text-gray-500">Sin recepciones con ese filtro.</td></tr></tbody></table>
+          </tr><tr v-if="!recepcionesFiltradas.length"><td colspan="5" class="text-gray-500">Sin recepciones con ese filtro.</td></tr></tbody></table>
       </div>
     </div>
   </div>
