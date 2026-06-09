@@ -50,6 +50,29 @@ def set_solicitud(solicitud: dict) -> None:
     _write(data)
 
 
+def record_solicitud_resuelta(estado: Optional[str], motivo: Optional[str] = None) -> None:
+    data = _read()
+    sol = data.get("solicitud") or {}
+    if estado is not None:
+        sol["estado"] = estado
+    if motivo is not None:
+        sol["motivo"] = motivo
+    data["solicitud"] = sol
+    _write(data)
+
+
+def add_evento(ev: dict) -> None:
+    data = _read()
+    evs = data.get("eventos") or []
+    evs.insert(0, ev)
+    data["eventos"] = evs[:20]
+    _write(data)
+
+
+def eventos() -> list:
+    return _read().get("eventos") or []
+
+
 def state() -> dict:
     """Estado para el panel (sin exponer el token en claro)."""
     data = _read()
@@ -59,4 +82,5 @@ def state() -> dict:
         "token_origen": "runtime" if _read().get("token") else ("entorno" if os.getenv("ODM_TOKEN") else None),
         "app_username": data.get("app_username"),
         "solicitud": data.get("solicitud"),
+        "eventos": data.get("eventos") or [],
     }

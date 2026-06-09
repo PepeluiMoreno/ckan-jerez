@@ -58,11 +58,12 @@ createApp({
     const filtros = reactive({ q:'', pub:'', soloSus:true })
     const modal = reactive({ open:false, titulo:'', texto:'' })
     const help = ref(false)
-    const onboarding = reactive({ tiene_token:false, operativa:false, solicitud:null, app_username:null, token_origen:null, token_error:null, app_name:'ckan-jerez' })
+    const onboarding = reactive({ tiene_token:false, operativa:false, solicitud:null, app_username:null, token_origen:null, token_error:null, app_name:'ckan-jerez', eventos:[] })
     const altaForm = reactive({ nombre:'ckan-jerez', contacto:'', proposito:'Homogeneización y publicación en CKAN de datos abiertos de Jerez.' })
     const tokenInput = ref('')
     const proposeForm = reactive({ name:'Jerez — ', root_url:'', variante:'Censo documental', descripcion:'' })
     const proposeDone = ref(null)
+    const solicitudPendiente = computed(() => !!onboarding.solicitud && !onboarding.operativa && (onboarding.solicitud.estado || 'pendiente') !== 'rechazada')
     const showWizard = ref(false)
     const wizard = reactive({
       fetcher:'', preset:'', template:null, fixed:[], manifest:null, done:null,
@@ -253,7 +254,7 @@ createApp({
              subByResource, lastOk, pendientes, recursosFiltrados,
              esNodriza, expandidas, toggleNodriza, hijosDe, topNivel,
              go, fmtAgo, enOdm, suscribir, desuscribir, refrescar, borrarRecurso, clonar,
-             help, onboarding, altaForm, tokenInput, proposeForm, proposeDone,
+             help, onboarding, altaForm, tokenInput, proposeForm, proposeDone, solicitudPendiente,
              enviarSolicitud, guardarToken, proponerRecurso, loadOnboarding,
              getTemplate, pickPub, addParam, delParam, previewSource, createSource }
   },
@@ -321,6 +322,7 @@ createApp({
               <td class="text-gray-200" :title="r.id">
                 <button v-if="esNodriza(r) && hijosDe(r.id).length" @click="toggleNodriza(r.id)" style="border:0;background:none;cursor:pointer;color:#c4b5fd" :title="(expandidas.has(r.id)?'Contraer':'Desplegar')+' recursos descubiertos'">{{ expandidas.has(r.id) ? '▾' : '▸' }}</button>
                 <span v-if="esNodriza(r)" title="Nave nodriza (descubre recursos)">🛰️</span>
+                <span v-else title="Recurso (hoja)">📄</span>
                 {{ r.name }}
                 <span v-if="esNodriza(r) && hijosDe(r.id).length" class="text-gray-500" style="font-size:.7rem">({{ hijosDe(r.id).length }} descubiertos)</span>
               </td>
@@ -430,6 +432,14 @@ createApp({
       <h2 class="text-xl font-bold text-gray-100 mb-1">Alta en OpenDataManager</h2>
       <p class="text-sm text-gray-400 mb-5">Ciclo del consumidor: solicitar el alta → ODM la aprueba y emite un token → con el token, suscribirse y proponer recursos.</p>
 
+      <div v-if="onboarding.eventos && onboarding.eventos.length" class="card p-5 mb-5">
+        <h3 class="text-sm font-semibold text-gray-200 mb-2">Avisos de ODM</h3>
+        <div v-for="(e,i) in onboarding.eventos" :key="i" class="text-sm mb-1"
+             :class="e.estadoAprobacion==='rechazado' ? 'text-red-300' : 'text-gray-300'">
+          <b>{{ e.name || e.resourceId }}</b> — {{ e.estadoAprobacion }}<span v-if="e.motivoRechazo"> · motivo: {{ e.motivoRechazo }}</span>
+        </div>
+      </div>
+
       <div class="card p-5 mb-5">
         <div class="flex items-center gap-2 text-sm">
           <span class="pill" :style="onboarding.operativa ? 'background:#064e3b;color:#34d399' : 'background:#78350f;color:#fbbf24'">
@@ -449,11 +459,13 @@ createApp({
           <label class="text-xs text-gray-400">Contacto<input v-model="altaForm.contacto" placeholder="email" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
           <label class="text-xs text-gray-400">Propósito<input v-model="altaForm.proposito" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
         </div>
-        <div class="mt-3"><button class="btn btn-primary" :disabled="busy || !altaForm.nombre" @click="enviarSolicitud">Enviar solicitud</button></div>
-        <div v-if="onboarding.solicitud" class="card border-blue-700 bg-blue-900/30 text-blue-200 px-4 py-2.5 text-sm mt-3">
-          Solicitud «{{ onboarding.solicitud.nombre }}» — estado <b>{{ onboarding.solicitud.estado }}</b>.
-          <span v-if="onboarding.solicitud.estado==='pendiente'"> Avisa al administrador de ODM para que la apruebe y te dé el token.</span>
-          <span v-if="onboarding.solicitud.motivo"> Motivo: {{ onboarding.solicitud.motivo }}</span>
+        <div class="mt-3"><button class="btn btn-primary" :disabled="busy || !altaForm.nombre || solicitudPendiente" @click="enviarSolicitud">Enviar solicitud</button></div>
+        <div v-if="onboarding.solicitud" class="card px-4 py-2.5 text-sm mt-3"
+             :class="onboarding.solicitud.estado==='rechazada' ? 'border-red-700 bg-red-900/30 text-red-200' : 'border-blue-700 bg-blue-900/30 text-blue-200'">
+          Solicitud «{{ onboarding.solicitud.nombre }}» —
+          <b>{{ onboarding.solicitud.estado==='rechazada' ? 'rechazada' : (onboarding.solicitud.estado==='aprobada' ? 'aprobada' : 'Esperando aprobación') }}</b>.
+          <span v-if="solicitudPendiente"> El aviso llega por webhook en cuanto ODM la resuelva (no hace falta preguntar).</span>
+          <span v-if="onboarding.solicitud.estado==='rechazada' && onboarding.solicitud.motivo"> Motivo: {{ onboarding.solicitud.motivo }}. Corrige y vuelve a enviar.</span>
         </div>
       </div>
 
@@ -473,9 +485,12 @@ createApp({
         <div class="grid grid-cols-2 gap-3">
           <label class="text-xs text-gray-400">Nombre<input v-model="proposeForm.name" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
           <label class="text-xs text-gray-400">URL raíz<input v-model="proposeForm.root_url" placeholder="https://…" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
-          <label class="text-xs text-gray-400">Variante
+          <label class="text-xs text-gray-400">¿Qué obtener de cada documento?
             <select v-model="proposeForm.variante" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
-              <option>Censo documental</option><option>Extracción de datos</option><option>Extracción con receta</option></select></label>
+              <option value="Censo documental">Solo listar los documentos (no descarga)</option>
+              <option value="Extracción de datos">Extraer los datos de sus tablas</option>
+              <option value="Extracción con receta">Extraer campos concretos (receta)</option></select>
+            <span class="block text-[11px] text-gray-500 mt-0.5">Si no estás seguro, deja «solo listar».</span></label>
           <label class="text-xs text-gray-400">Descripción<input v-model="proposeForm.descripcion" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
         </div>
         <div class="mt-3"><button class="btn btn-primary" :disabled="busy || !proposeForm.name || !proposeForm.root_url" @click="proponerRecurso">Proponer recurso</button></div>

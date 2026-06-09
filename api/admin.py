@@ -287,7 +287,8 @@ def onboarding_solicitar(body: dict = Body(...)) -> Any:
     proposito = (body.get("proposito") or "").strip() or None
     try:
         sol = OdmClient(s.odm_api_url).crear_solicitud_ingreso(
-            nombre=nombre, contacto=contacto, proposito=proposito)
+            nombre=nombre, contacto=contacto, proposito=proposito,
+            callback_url=(s.webhook_url or None), callback_secret=(s.odm_webhook_secret or None))
         onboarding.set_solicitud(sol)
         return sol
     except Exception as e:  # noqa: BLE001

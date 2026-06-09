@@ -204,15 +204,21 @@ class OdmClient:
 
     # ── Alta self-service (opción B): solicitud de ingreso, sin autenticación ─
     def crear_solicitud_ingreso(self, *, nombre: str, contacto: Optional[str] = None,
-                                proposito: Optional[str] = None) -> dict:
+                                proposito: Optional[str] = None,
+                                callback_url: Optional[str] = None,
+                                callback_secret: Optional[str] = None) -> dict:
         """Registra una solicitud de alta como aplicación consumidora. Mutación
-        pública: queda 'pendiente' hasta que un admin de ODM la apruebe y emita
-        el token Bearer que esta app usará en adelante."""
+        pública: queda 'pendiente' hasta que un admin de ODM la apruebe. Si se
+        da callback_url, ODM empujará por webhook la resolución (estado+motivo)."""
         inp: dict[str, Any] = {"nombre": nombre}
         if contacto:
             inp["contacto"] = contacto
         if proposito:
             inp["proposito"] = proposito
+        if callback_url:
+            inp["callbackUrl"] = callback_url
+        if callback_secret:
+            inp["callbackSecret"] = callback_secret
         return self.execute(M_CREAR_SOLICITUD, {"input": inp})["crearSolicitudIngreso"]
 
     # ── Auth (opción A) ──────────────────────────────────────────────────────

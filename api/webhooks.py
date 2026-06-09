@@ -48,4 +48,13 @@ async def odmgr_webhook(
         payload = json.loads(body)
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid JSON: {exc}")
+    # Eventos de gobernanza (push de ODM): no son datasets; se registran para el panel.
+    evento = payload.get("evento") if isinstance(payload, dict) else None
+    if evento in ("solicitud_resuelta", "recurso_resuelto"):
+        from app import onboarding
+        if evento == "solicitud_resuelta":
+            onboarding.record_solicitud_resuelta(payload.get("estado"), payload.get("motivo"))
+        else:
+            onboarding.add_evento(payload)
+        return {"ok": True, "evento": evento}
     return handle_notification(payload, sink=get_sink())
