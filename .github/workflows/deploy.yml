@@ -101,6 +101,18 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             chmod 600 .env.production || true
             COMPOSE="docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml"
+            # Stack CKAN opcional: se incluye SOLO si sus variables están definidas en
+            # .env.production. Así el merge a master no rompe el deploy: hasta que pongas
+            # las variables se despliega solo la app; en cuanto estén, el stack arranca.
+            CKAN_STACK=0
+            if grep -qE '^CKAN_DB_PASSWORD=.+' .env.production 2>/dev/null \
+               && grep -qE '^CKAN_SESSION_SECRET=.+' .env.production 2>/dev/null; then
+              COMPOSE="$COMPOSE -f docker-compose.ckan.yml"
+              CKAN_STACK=1
+              echo "[ckan] variables presentes: el stack CKAN (ckan.pepelui.es) se desplegará."
+            else
+              echo "[ckan] variables CKAN ausentes: se despliega solo la app (sin stack CKAN)."
+            fi
             $COMPOSE pull
             # Arranca/actualiza el servicio web (uvicorn): sirve panel /, API /api,
             # webhook /webhooks/odmgr y /health. (Antes solo corría un smoke de worker
@@ -118,4 +130,9 @@ jobs:
               exit 1
             fi
             echo "[health] OK — ckan-jerez sirviendo"
+            if [ "$CKAN_STACK" = 1 ]; then
+              echo "[ckan] levantando el stack CKAN (build de la imagen + servicios)…"
+              $COMPOSE up -d --build ckan-db ckan-solr ckan-redis ckan-datapusher ckan
+              echo "[ckan] stack lanzado. CKAN se autoinicializa (bootstrap) y tarda ~1-2 min en responder en ckan.pepelui.es."
+            fi
             docker image prune -f
