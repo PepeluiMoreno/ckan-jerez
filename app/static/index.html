@@ -271,6 +271,8 @@ createApp({
       loadStatus(); run(loadOnboarding); run(loadRecursos)
       api('/version').then(d=>appVersion.value=d.version).catch(()=>{})
       setInterval(loadStatus, 15000)
+      // Mientras no esté operativa, comprobar el alta sola y cerrar la ventana al aprobarse.
+      setInterval(() => { if (!onboarding.operativa) loadOnboarding() }, 5000)
     })
 
     return { view, nav, err, busy, appVersion, ram, ramPct, ramColor, status, syncLabel,
