@@ -53,7 +53,12 @@ async def odmgr_webhook(
     if evento in ("solicitud_resuelta", "recurso_resuelto"):
         from app import onboarding
         if evento == "solicitud_resuelta":
-            onboarding.record_solicitud_resuelta(payload.get("estado"), payload.get("motivo"), token=payload.get("token"), username=payload.get("username"))
+            estado = payload.get("estado")
+            if estado == "anulada":
+                # ODM eliminó la aplicación → des-registrar de inmediato.
+                onboarding.desregistrar()
+            else:
+                onboarding.record_solicitud_resuelta(estado, payload.get("motivo"), token=payload.get("token"), username=payload.get("username"))
         else:
             onboarding.add_evento(payload)
         return {"ok": True, "evento": evento}
