@@ -11,7 +11,7 @@ class Settings:
         self.odm_webhook_secret = os.getenv("ODM_WEBHOOK_SECRET", "")
         self.ckan_url = os.getenv("CKAN_URL", "")
         self.ckan_api_token = os.getenv("CKAN_API_TOKEN", "")
-        self.public_base_url = os.getenv("PUBLIC_BASE_URL", "")
+        self.public_base_url = os.getenv("PUBLIC_BASE_URL", "") or "https://ckan-mgr.pepelui.es"
 
     @property
     def webhook_url(self) -> str:
