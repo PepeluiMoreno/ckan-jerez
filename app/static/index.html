@@ -56,6 +56,7 @@ createApp({
     const odmPubs = ref([])
 
     const filtros = reactive({ q:'', pub:'', soloSus:true })
+    const subDialog = reactive({ open:false, rid:null, name:'', autoUpgrade:'patch', pinned:'' })
     const filtrosRec = reactive({ desde:'', hasta:'', dataset:'', estado:'', pub:'' })
     const publishersRec = computed(() => [...new Set((notifications.value||[]).map(n=>n.publisher).filter(Boolean))].sort())
     const recepcionesFiltradas = computed(() => {
@@ -179,10 +180,12 @@ createApp({
     function go(id) { view.value = id; if (loaders[id]) run(loaders[id]) }
 
     // ── acciones ──
-    function suscribir(rid) { run(async () => {
-      await api('/odm/subscribe', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid})})
+    function suscribir(rid, autoUpgrade='patch', pinned='') { run(async () => {
+      await api('/odm/subscribe', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid, auto_upgrade:autoUpgrade, pinned_version: pinned || null})})
       subscriptions.value = await api('/odm/subscriptions')
     }) }
+    function abrirSuscribir(r) { subDialog.rid=r.id; subDialog.name=r.name||r.id; subDialog.autoUpgrade='patch'; subDialog.pinned=''; subDialog.open=true }
+    function confirmarSuscribir() { const {rid,autoUpgrade,pinned}=subDialog; subDialog.open=false; suscribir(rid, autoUpgrade, pinned) }
     function desuscribir(rid) {
       const sub = subByResource.value[rid]; if (!sub) return
       run(async () => {
@@ -277,7 +280,7 @@ createApp({
              filtros, modal, showWizard, wizard, presetsOf, pubsDisponibles, pubsOdmExtra,
              subByResource, lastOk, pendientes, recursosFiltrados,
              esNodriza, expandidas, toggleNodriza, hijosDe, topNivel,
-             go, fmtAgo, enOdm, suscribir, desuscribir, refrescar, borrarRecurso, confirmarBorrado, delRecurso, clonar,
+             go, fmtAgo, enOdm, suscribir, abrirSuscribir, confirmarSuscribir, subDialog, desuscribir, refrescar, borrarRecurso, confirmarBorrado, delRecurso, clonar,
              help, onboarding, onboardingCargado, altaForm, altaCerrada, altaCompleta, proposeForm, proposeDone, solicitudPendiente,
              filtrosRec, recepcionesFiltradas, publishersRec,
              enviarSolicitud, proponerRecurso, loadOnboarding,
@@ -379,7 +382,7 @@ createApp({
       <div class="card p-5 mb-6">
         <div class="flex flex-wrap items-center gap-3 mb-4">
           <input v-model="filtros.q" placeholder="Buscar por nombre o publisher…" class="flex-1 min-w-64 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200">
-          <select v-model="filtros.pub" class="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+          <select v-model="filtros.pub" class="max-w-[16rem] bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
             <option value="">Publisher: todos</option>
             <option v-for="p in pubsDisponibles" :key="p" :value="p">{{ p }}</option>
           </select>
@@ -400,7 +403,7 @@ createApp({
               <td class="text-gray-400">{{ r.publisher || '—' }}</td>
               <td>
                 <button v-if="subByResource[r.id]" class="pill" style="background:#064e3b;color:#34d399;border:0;cursor:pointer" :disabled="busy" @click="desuscribir(r.id)" title="Pulsar para desuscribir">✓ suscrito</button>
-                <button v-else class="pill bg-gray-700 text-gray-300" style="border:0;cursor:pointer" :disabled="busy || !status.application" @click="suscribir(r.id)" :title="status.application ? 'Pulsar para suscribir' : 'Requiere Application registrada'">suscribir</button>
+                <button v-else class="pill bg-gray-700 text-gray-300" style="border:0;cursor:pointer" :disabled="busy || !status.application" @click="abrirSuscribir(r)" :title="status.application ? 'Pulsar para suscribir' : 'Requiere Application registrada'">suscribir</button>
               </td>
               <td :style="{color: (lastOk[r.id] && (Date.now()-new Date(lastOk[r.id]+'Z').getTime())<3600000) ? '#34d399' : '#6b7280'}">{{ fmtAgo(lastOk[r.id]) }}</td>
             </tr>
@@ -409,7 +412,7 @@ createApp({
               <td class="text-gray-500">{{ c.publisher || '—' }}</td>
               <td>
                 <button v-if="subByResource[c.id]" class="pill" style="background:#064e3b;color:#34d399;border:0;cursor:pointer" :disabled="busy" @click="desuscribir(c.id)" title="Pulsar para desuscribir">✓ suscrito</button>
-                <button v-else class="pill bg-gray-700 text-gray-300" style="border:0;cursor:pointer" :disabled="busy || !status.application" @click="suscribir(c.id)" :title="status.application ? 'Pulsar para suscribir' : 'Requiere Application registrada'">suscribir</button>
+                <button v-else class="pill bg-gray-700 text-gray-300" style="border:0;cursor:pointer" :disabled="busy || !status.application" @click="abrirSuscribir(c)" :title="status.application ? 'Pulsar para suscribir' : 'Requiere Application registrada'">suscribir</button>
               </td>
               <td :style="{color: (lastOk[c.id] && (Date.now()-new Date(lastOk[c.id]+'Z').getTime())<3600000) ? '#34d399' : '#6b7280'}">{{ fmtAgo(lastOk[c.id]) }}</td>
             </tr>
@@ -446,6 +449,30 @@ createApp({
   </div>
 
   <!-- Modal -->
+  <!-- Diálogo: condiciones de suscripción / refresco -->
+  <div v-if="subDialog.open" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" @click.self="subDialog.open=false">
+    <div class="card p-5 w-full max-w-md">
+      <h3 class="text-lg font-semibold text-gray-100 mb-1">Suscribir recurso</h3>
+      <p class="text-sm text-gray-400 mb-4 truncate" :title="subDialog.name">{{ subDialog.name }}</p>
+      <div class="space-y-3">
+        <label class="block text-xs text-gray-400">Auto-actualización al refrescar
+          <select v-model="subDialog.autoUpgrade" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+            <option value="patch">patch — siempre la última</option>
+            <option value="minor">minor — última menor</option>
+          </select>
+        </label>
+        <label class="block text-xs text-gray-400">Versión fija (opcional)
+          <input v-model="subDialog.pinned" placeholder="p. ej. 1.2.0 — vacío = seguir auto" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+        </label>
+        <p class="text-xs text-gray-500">Si fijas una versión, ODM no te refresca a nuevas versiones automáticamente; pídelo a demanda cuando lo necesites.</p>
+      </div>
+      <div class="flex justify-end gap-2 mt-5">
+        <button class="btn btn-ghost" @click="subDialog.open=false">Cancelar</button>
+        <button class="btn btn-primary" :disabled="busy" @click="confirmarSuscribir">Suscribir</button>
+      </div>
+    </div>
+  </div>
+
   <div v-if="modal.open" class="fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,.6)" @click.self="modal.open=false">
     <div class="card p-5 w-full max-w-md mx-4">
       <h3 class="text-sm font-semibold text-yellow-400 mb-2">⚠️ {{ modal.titulo }}</h3>

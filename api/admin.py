@@ -177,7 +177,9 @@ def subscribe(body: dict = Body(...)) -> Any:
             raise HTTPException(status_code=400, detail=(
                 "ckan-mgr aún no está registrada como Application en ODM. Completa la "
                 "configuración (PUBLIC_BASE_URL, ODM_WEBHOOK_SECRET) y pulsa Sincronizar."))
-        return c.subscribe_resource(application_id=app_id, resource_id=rid)
+        return c.subscribe_resource(application_id=app_id, resource_id=rid,
+                                    auto_upgrade=(body.get("auto_upgrade") or "patch"),
+                                    pinned_version=(body.get("pinned_version") or None))
     return _odm(_sub)
 
 
