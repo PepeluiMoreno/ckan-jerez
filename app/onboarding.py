@@ -50,7 +50,8 @@ def set_solicitud(solicitud: dict) -> None:
     _write(data)
 
 
-def record_solicitud_resuelta(estado: Optional[str], motivo: Optional[str] = None) -> None:
+def record_solicitud_resuelta(estado: Optional[str], motivo: Optional[str] = None,
+                              token: Optional[str] = None, username: Optional[str] = None) -> None:
     data = _read()
     sol = data.get("solicitud") or {}
     if estado is not None:
@@ -58,6 +59,13 @@ def record_solicitud_resuelta(estado: Optional[str], motivo: Optional[str] = Non
     if motivo is not None:
         sol["motivo"] = motivo
     data["solicitud"] = sol
+    # Si ODM aprueba y entrega el token autogenerado, guardarlo → operativa sin
+    # intervención manual (copiar/pegar).
+    if estado == "aprobada" and token:
+        data["token"] = (token or "").strip()
+        if username:
+            data["app_username"] = username
+        data["token_origen"] = "auto"
     _write(data)
 
 
