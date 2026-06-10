@@ -29,14 +29,8 @@ def _client_or_error():
     global _client
     if _client is None:
         from services.odm_client import OdmClient
-        from app import onboarding
-        s = get_settings()
-        tok = onboarding.get_token()
-        if tok:                       # opción B: token Bearer (alta aprobada)
-            c = OdmClient(s.odm_api_url, token=tok)
-        else:                         # opción A (legado): cuenta de servicio
-            c = OdmClient.from_env()
-            c.login()
+        c = OdmClient.from_env()      # cuenta de servicio: sin token manual
+        c.login()
         _client = c
     return _client
 
@@ -259,30 +253,28 @@ def do_bootstrap(body: dict = Body(default={})) -> Any:
 
 @router.get("/onboarding")
 def onboarding_state() -> Any:
-    """Estado del alta para el panel: valida contra ODM si la app sigue dada de
-    alta (token vivo). Si ODM responde que no, des-registra; si no hay contacto,
-    marca 'sin contacto' SIN des-registrar."""
-    global _client
+    """Estado del alta para el panel. 'operativa' = nuestra Application existe en
+    ODM y tiene al menos una suscripción concedida. No depende de ningún token:
+    el cliente habla con ODM por su cuenta de servicio."""
     from app import onboarding
     st = onboarding.state()
-    if st["tiene_token"]:
-        try:
-            who = _client_or_error().whoami()   # username si el token sigue vivo
-            if who:
-                st["operativa"] = True
-            else:
-                onboarding.desregistrar()       # ODM dice que ya no estamos dados de alta
-                _client = None
-                st = onboarding.state()
-                st["operativa"] = False
-                st["desregistrada"] = True
-        except Exception as e:  # noqa: BLE001 — ODM inaccesible: NO des-registrar
-            st["operativa"] = False
-            st["sin_contacto"] = True
-            st["token_error"] = str(e)
-    else:
-        st["operativa"] = False
     st["app_name"] = APP_NAME
+    try:
+        c = _client_or_error()
+        app_id = _app_id(c)
+        if app_id:
+            subs = c.dataset_subscriptions(application_id=app_id)
+            st["registrada"] = True
+            st["num_suscripciones"] = len(subs)
+            st["operativa"] = len(subs) > 0
+        else:
+            st["registrada"] = False
+            st["num_suscripciones"] = 0
+            st["operativa"] = False
+    except Exception as e:  # noqa: BLE001 — ODM inaccesible: no des-registrar
+        st["operativa"] = False
+        st["sin_contacto"] = True
+        st["token_error"] = str(e)
     return st
 
 

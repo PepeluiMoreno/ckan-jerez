@@ -79,7 +79,7 @@ createApp({
     const onboarding = reactive({ tiene_token:false, operativa:false, solicitud:null, app_username:null, token_origen:null, token_error:null, app_name:'ckan-jerez', eventos:[] })
     const altaForm = reactive({ nombre:'ckan-jerez', contacto:'', proposito:'Homogeneización y publicación en CKAN de datos abiertos de Jerez.', descripcion:'', persona_contacto:'', email:'', telefono:'', github_url:'', consumption_mode:'webhook', webhook_url:'https://ckan-mgr.pepelui.es/webhooks/odmgr' })
     const modosConsumo = ['webhook','graphql','both']
-    const tokenInput = ref('')
+    const onboardingCargado = ref(false)
     const proposeForm = reactive({ name:'Jerez — ', root_url:'', variante:'Censo documental', descripcion:'' })
     const proposeDone = ref(null)
     const delRecurso = reactive({ open:false, rid:null, nombre:'', hard:false })
@@ -167,13 +167,9 @@ createApp({
     async function loadActividad() {
       try { notifications.value = await api('/odm/notifications') } catch {}
     }
-    async function loadOnboarding() { Object.assign(onboarding, await api('/onboarding')) }
+    async function loadOnboarding() { Object.assign(onboarding, await api('/onboarding')); onboardingCargado.value = true }
     function enviarSolicitud() { run(async () => {
       onboarding.solicitud = await api('/onboarding/solicitar', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(altaForm)})
-    }) }
-    function guardarToken() { run(async () => {
-      await api('/onboarding/token', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tokenInput.value})})
-      tokenInput.value=''; await loadOnboarding(); await loadStatus()
     }) }
     function proponerRecurso() { run(async () => {
       proposeDone.value=null
@@ -282,9 +278,9 @@ createApp({
              subByResource, lastOk, pendientes, recursosFiltrados,
              esNodriza, expandidas, toggleNodriza, hijosDe, topNivel,
              go, fmtAgo, enOdm, suscribir, desuscribir, refrescar, borrarRecurso, confirmarBorrado, delRecurso, clonar,
-             help, onboarding, altaForm, altaCerrada, altaCompleta, tokenInput, proposeForm, proposeDone, solicitudPendiente,
+             help, onboarding, onboardingCargado, altaForm, altaCerrada, altaCompleta, proposeForm, proposeDone, solicitudPendiente,
              filtrosRec, recepcionesFiltradas, publishersRec,
-             enviarSolicitud, guardarToken, proponerRecurso, loadOnboarding,
+             enviarSolicitud, proponerRecurso, loadOnboarding,
              getTemplate, pickPub, addParam, delParam, previewSource, createSource }
   },
   template: `
@@ -321,19 +317,19 @@ createApp({
     <div v-if="err" class="card border-red-700 bg-red-900/40 text-red-200 px-4 py-2.5 mb-4 text-sm">⚠️ {{ err }}</div>
 
     <!-- Reabrir el alta cuando se cerró la ventana y aún no está operativa -->
-    <div v-if="!onboarding.operativa && altaCerrada" class="card border-amber-700 bg-amber-900/20 text-amber-200 px-4 py-2.5 mb-4 text-sm flex items-center gap-3">
+    <div v-if="onboardingCargado && !onboarding.operativa && altaCerrada" class="card border-amber-700 bg-amber-900/20 text-amber-200 px-4 py-2.5 mb-4 text-sm flex items-center gap-3">
       <span>Alta en ODM pendiente. Puedes seguir consultando el panel mientras tanto.</span>
       <button class="btn btn-primary ml-auto" @click="altaCerrada=false">Reabrir alta</button>
     </div>
 
     <!-- #10 Gate de alta: ventana de onboarding (cerrable) -->
-    <div v-if="!onboarding.operativa && !altaCerrada" class="fixed inset-0 z-50 bg-black/75 overflow-y-auto p-6">
+    <div v-if="onboardingCargado && !onboarding.operativa && !altaCerrada" class="fixed inset-0 z-50 bg-black/75 overflow-y-auto p-6">
       <div class="max-w-2xl mx-auto">
         <div class="flex items-start justify-between mb-1">
           <h2 class="text-xl font-bold text-gray-100">Alta en OpenDataManager</h2>
           <button class="text-gray-400 hover:text-gray-200 text-3xl leading-none px-2 -mt-1" title="Cerrar" @click="altaCerrada=true">&times;</button>
         </div>
-        <p class="text-sm text-gray-400 mb-5">Solicita el alta; cuando un administrador la apruebe en ODM, la app quedará operativa sola. Puedes cerrar esta ventana mientras tanto.</p>
+        <p class="text-sm text-gray-400 mb-5">Solicita el alta. Cuando un administrador la apruebe y conceda la primera suscripción en ODM, el panel quedará operativo solo. Puedes cerrar esta ventana mientras tanto.</p>
       </div>
 
       <div v-if="!onboarding.operativa" class="card p-5 mb-5">
@@ -359,13 +355,6 @@ createApp({
         <div v-if="onboarding.solicitud" class="text-sm mt-3 text-gray-300">
           Solicitud «{{ onboarding.solicitud.nombre }}» — <b>{{ onboarding.solicitud.estado==='rechazada' ? 'rechazada' : (onboarding.solicitud.estado==='aprobada' ? 'aprobada' : 'esperando aprobación') }}</b>.<span v-if="onboarding.solicitud.estado==='rechazada' && onboarding.solicitud.motivo"> Motivo: {{ onboarding.solicitud.motivo }}.</span>
         </div>
-        <details v-if="!solicitudPendiente" class="mt-3">
-          <summary class="text-xs text-gray-500 cursor-pointer">¿Ya tienes un token? Pégalo aquí</summary>
-          <div class="flex gap-2 mt-2">
-            <input v-model="tokenInput" placeholder="odm_…" class="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200">
-            <button class="btn btn-primary whitespace-nowrap" :disabled="busy || !tokenInput" @click="guardarToken">Guardar</button>
-          </div>
-        </details>
       </div>
 
       </div>
