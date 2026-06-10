@@ -18,7 +18,6 @@
     .btn { font-size:.8rem; border-radius:.5rem; padding:.45rem .85rem; transition:background .15s; }
     .btn-primary { background:#2563eb; color:#fff; } .btn-primary:hover { background:#3b82f6; }
     .btn-ghost { background:rgba(55,65,81,.5); color:#cbd5e1; } .btn-ghost:hover { background:#374151; color:#fff; }
-    .btn-danger { background:#dc2626; color:#fff; } .btn-danger:hover { background:#ef4444; }
     th { text-align:left; font-weight:600; color:#9ca3af; }
     td,th { padding:.5rem .65rem; border-bottom:1px solid #374151; font-size:.8rem; vertical-align:top; }
     pre { background:#0b1220; border:1px solid #374151; border-radius:.5rem; padding:.75rem; overflow:auto; font-size:.75rem; color:#cbd5e1; }
@@ -36,248 +35,67 @@ const { createApp, ref, reactive, onMounted, computed } = Vue
 
 createApp({
   setup() {
-    const view = ref('recursos')
+    const view = ref('suscripciones')
     const nav = [
-      { id:'recursos', label:'🗂️ Recursos' },
-      { id:'actividad', label:'📨 Recepciones' },
+      { id:'suscripciones', label:'🛰️ Suscripciones' },
+      { id:'recepciones',   label:'📨 Recepciones' },
     ]
-    const err = ref('')
-    const busy = ref(false)
+    const help = ref(false)
+    const err  = ref('')
     const appVersion = ref('')
     const ram = reactive({ total:0, avail:0 })
-    const status = reactive({ ckan_configured:false, odm:'checking', application:null, application_name:null, webhook_url:null, config_missing:[], sync:{} })
-
-    const catalog = reactive({ publishers:{}, sources:[], subscribe_publishers:[] })
-    const resources = ref([])
-    const subscriptions = ref([])
-    const executions = ref([])
-    const notifications = ref([])
-    const fetchers = ref([])
-    const odmPubs = ref([])
-
-    const filtros = reactive({ q:'', pub:'', soloSus:true })
-    const filtrosRec = reactive({ desde:'', hasta:'', dataset:'', estado:'', pub:'' })
-    const publishersRec = computed(() => [...new Set((notifications.value||[]).map(n=>n.publisher).filter(Boolean))].sort())
-    const recepcionesFiltradas = computed(() => {
-      const desde = filtrosRec.desde ? new Date(filtrosRec.desde+'T00:00:00') : null
-      const hasta = filtrosRec.hasta ? new Date(filtrosRec.hasta+'T23:59:59') : null
-      const ds = (filtrosRec.dataset||'').toLowerCase()
-      return (notifications.value||[]).filter(n => {
-        const t = n.sentAt ? new Date(n.sentAt.replace(' ','T')+(/[zZ+]/.test(n.sentAt)?'':'Z')) : null
-        if (desde && (!t || t < desde)) return false
-        if (hasta && (!t || t > hasta)) return false
-        if (ds && !String(n.datasetName||n.datasetId||'').toLowerCase().includes(ds)) return false
-        if (filtrosRec.pub && n.publisher !== filtrosRec.pub) return false
-        const ok = n.statusCode>=200 && n.statusCode<300
-        if (filtrosRec.estado==='ok' && !ok) return false
-        if (filtrosRec.estado==='error' && ok) return false
-        return true
-      })
-    })
-    const modal = reactive({ open:false, titulo:'', texto:'' })
-    const help = ref(false)
-    const onboarding = reactive({ tiene_token:false, operativa:false, solicitud:null, app_username:null, token_origen:null, token_error:null, app_name:'ckan-jerez', eventos:[] })
-    const tokenInput = ref('')
-    const proposeForm = reactive({ name:'Jerez — ', root_url:'', variante:'Censo documental', descripcion:'' })
-    const proposeDone = ref(null)
-    const delRecurso = reactive({ open:false, rid:null, nombre:'', hard:false })
-    const showWizard = ref(false)
-    const wizard = reactive({
-      fetcher:'', preset:'', template:null, fixed:[], manifest:null, done:null,
-      form: { pub:'', publisher:{acronimo:'',nombre:'',nivel:'MUNICIPAL',pais:'España',portal_url:''},
-              name:'', schedule:'', params:[] },
-    })
+    const status = reactive({ ckan_configured:false, config_missing:[], operativa:false, webhook_url:null, subscriptions_count:0 })
+    const subs = ref([])
+    const events = ref([])
+    const q = ref('')
 
     // ── infra ──
-    async function api(path, opts) {
-      const r = await fetch('/api'+path, opts)
+    async function api(path) {
+      const r = await fetch('/api'+path)
       if (!r.ok) { let d; try{ d=await r.json() }catch{}; throw new Error(d?.detail || (r.status+' '+r.statusText)) }
       return r.json()
     }
-    async function run(fn) { err.value=''; busy.value=true; try { await fn() } catch(e){ err.value=String(e.message||e) } finally { busy.value=false } }
-    async function loadStatus() {
-      try { Object.assign(status, await api('/status')) } catch { status.odm='offline' }
+    async function load() {
+      try { Object.assign(status, await api('/status')) } catch (e) { err.value=String(e.message||e) }
+      try { subs.value   = await api('/odm/subscriptions') } catch {}
+      try { events.value = await api('/odm/notifications') } catch {}
+      try { const v = await api('/version'); appVersion.value = v.version } catch {}
       try { const d = await api('/system/info'); ram.total=d.ram_total_mb; ram.avail=d.ram_available_mb } catch {}
     }
+    const go = (v) => { view.value=v; help.value=false }
 
-    // ── derivados ──
-    const subByResource = computed(() => { const m={}; for (const s of subscriptions.value) m[s.resourceId]=s; return m })
-    const lastOk = computed(() => {
-      const m = {}
-      for (const e of executions.value)
-        if (e.status==='completed' && e.completedAt && (!m[e.resourceId] || e.completedAt > m[e.resourceId])) m[e.resourceId]=e.completedAt
-      return m
-    })
-    const pubsDisponibles = computed(() => [...new Set(resources.value.map(r=>r.publisher).filter(Boolean))].sort())
-    const nombresEnOdm = computed(() => new Set(resources.value.map(r => (r.name||'').trim().toLowerCase())))
-    const pendientes = computed(() => (catalog.sources||[]).filter(s => !nombresEnOdm.value.has((s.name||'').trim().toLowerCase())))
-    const recursosFiltrados = computed(() => resources.value.filter(r =>
-      (!filtros.q || (r.name||'').toLowerCase().includes(filtros.q.toLowerCase()) || (r.publisher||'').toLowerCase().includes(filtros.q.toLowerCase())) &&
-      (!filtros.pub || r.publisher === filtros.pub) &&
-      (!filtros.soloSus || subByResource.value[r.id])))
-    // ── Jerarquía nodriza → recursos descubiertos (explorador de suscripción) ──
-    const esNodriza = (r) => r && r.generaColecciones === true
-    const expandidas = ref(new Set())
-    const toggleNodriza = (id) => { const n = new Set(expandidas.value); n.has(id) ? n.delete(id) : n.add(id); expandidas.value = n }
-    const hijosDe = (id) => resources.value.filter(r => r.parentResourceId === id).sort((a,b)=>(a.name||'').localeCompare(b.name||'','es'))
-    const idsPresentes = computed(() => new Set(resources.value.map(r => r.id)))
-    const topNivel = computed(() => recursosFiltrados.value.filter(r => !r.parentResourceId || !idsPresentes.value.has(r.parentResourceId)))
-    const pubsOdmExtra = computed(() => {
-      const conocidos = new Set()
-      for (const [k,v] of Object.entries(catalog.publishers||{})) { conocidos.add(k); if (v.nombre) conocidos.add(v.nombre) }
-      return odmPubs.value.filter(p => !conocidos.has(p.acronimo) && !conocidos.has(p.nombre))
-    })
-    const ramPct = computed(() => ram.total ? Math.round((1 - ram.avail/ram.total)*100) : 0)
-    const ramColor = computed(() => { const f=100-ramPct.value; return f<15?'#f87171':f<30?'#fbbf24':'#34d399' })
-    const presetsOf = computed(() => (fetchers.value.find(f=>f.name===wizard.fetcher)?.presets)||[])
-    const syncLabel = computed(() => {
-      const s = status.sync||{}
-      if (s.last_ok) return '✓ ' + fmtAgo(s.last_ok.replace(/\.\d+/,'').replace('+00:00',''))
-      if ((status.config_missing||[]).length) return 'falta config'
-      if (s.last_error) return 'reintentando'
-      return '…'
-    })
-    function fmtAgo(iso) {
-      if (!iso) return '—'
-      const t = new Date(iso.endsWith('Z')||iso.includes('+') ? iso : iso+'Z').getTime()
-      const mins = Math.floor((Date.now()-t)/60000)
-      if (isNaN(mins)) return iso
-      if (mins < 1) return 'ahora'
-      if (mins < 60) return `hace ${mins} min`
-      if (mins < 1440) return `hace ${Math.floor(mins/60)} h`
-      return `hace ${Math.floor(mins/1440)} d`
-    }
-    function minsDesde(iso) { if (!iso) return null; const t=new Date(iso.endsWith('Z')?iso:iso+'Z').getTime(); return Math.floor((Date.now()-t)/60000) }
-    function enOdm(name) { return nombresEnOdm.value.has((name||'').trim().toLowerCase()) }
+    // ── derivados / formato ──
+    const ramPct   = computed(() => ram.total ? Math.round((1 - ram.avail/ram.total)*100) : 0)
+    const ramColor = computed(() => ramPct.value>85 ? '#f87171' : ramPct.value>60 ? '#fbbf24' : '#34d399')
+    const fmt   = (ts) => { if (!ts) return '—'; const d=new Date(ts); return isNaN(d)? String(ts) : d.toLocaleString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) }
+    const fday  = (ts) => { if (!ts) return '—'; const d=new Date(ts); return isNaN(d)? String(ts) : d.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}) }
+    const isAuto = (v) => v===true || v==='true' || v==='1' || v===1
 
-    // ── cargas ──
-    async function loadRecursos() {
-      const c = await api('/catalog'); Object.assign(catalog, c)
-      resources.value = await api('/odm/resources')
-      try { subscriptions.value = await api('/odm/subscriptions') } catch {}
-      try { executions.value = await api('/odm/executions') } catch {}
-      try { odmPubs.value = await api('/odm/publishers') } catch {}
-      try { fetchers.value = await api('/odm/fetchers') } catch {}
-    }
-    async function loadActividad() {
-      try { notifications.value = await api('/odm/notifications') } catch {}
-    }
-    async function loadOnboarding() { Object.assign(onboarding, await api('/onboarding')) }
-    function guardarToken() { run(async () => {
-      await api('/onboarding/token', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tokenInput.value})})
-      tokenInput.value=''; await loadOnboarding(); await loadStatus()
-    }) }
-    function proponerRecurso() { run(async () => {
-      proposeDone.value=null
-      proposeDone.value = await api('/odm/propose', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(proposeForm)})
-    }) }
-    const loaders = { recursos: loadRecursos, actividad: loadActividad }
-    function go(id) { view.value = id; if (loaders[id]) run(loaders[id]) }
-
-    // ── acciones ──
-    function suscribir(rid) { run(async () => {
-      await api('/odm/subscribe', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid})})
-      subscriptions.value = await api('/odm/subscriptions')
-    }) }
-    function desuscribir(rid) {
-      const sub = subByResource.value[rid]; if (!sub) return
-      run(async () => {
-        await api('/odm/unsubscribe', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription_id:sub.id})})
-        subscriptions.value = await api('/odm/subscriptions')
-      })
-    }
-    function refrescar(rid) {
-      const m = minsDesde(lastOk.value[rid])
-      if (m !== null && m < 60) {
-        modal.open=true; modal.titulo='Refresco rechazado'
-        modal.texto=`Este recurso se ejecutó con éxito hace ${m} min. Se admite un refresco por hora para no abusar del proveedor.`
-        return
-      }
-      run(async () => {
-        const out = await api('/odm/execute', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid})})
-        if (out && out.success === false) { modal.open=true; modal.titulo='ODM rechazó el refresco'; modal.texto=out.message||'Rechazado.' }
-        await loadRecursos()
-      })
-    }
-    function borrarRecurso(rid, nombre) {
-      delRecurso.rid = rid; delRecurso.nombre = nombre; delRecurso.hard = false; delRecurso.open = true
-    }
-    function confirmarBorrado() {
-      const { rid, hard } = delRecurso
-      delRecurso.open = false
-      run(async () => {
-        await api('/odm/resource/delete', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:rid, hard})})
-        await loadRecursos()
-      })
-    }
-    function clonar(rid) { run(async () => {
-      const m = await api('/odm/resource/manifest?resource_id=' + encodeURIComponent(rid))
-      const r = (m.resources||[])[0] || {}; const pub = m.publisher || {}
-      wizard.fetcher = r.fetcher || ''; wizard.preset = r.preset || ''
-      wizard.template = { resources:[r] }; wizard.fixed = []; wizard.manifest=null; wizard.done=null
-      wizard.form.pub = ''
-      wizard.form.publisher = { acronimo: pub.acronimo||'', nombre: pub.nombre||'', nivel: pub.nivel||'MUNICIPAL', pais: pub.pais||'España', portal_url: pub.portal_url||'' }
-      wizard.form.name = (r.name||'') + ' (copia)'
-      wizard.form.schedule = (typeof r.schedule==='string' && !r.schedule.startsWith('<')) ? r.schedule : ''
-      wizard.form.params = (r.params||[]).map(p => ({key:p.key, value:p.value}))
-      showWizard.value = true
-      setTimeout(() => window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'}), 50)
-    }) }
-
-    // ── asistente ──
-    function getTemplate() { run(async () => {
-      wizard.manifest=null; wizard.done=null
-      const t = await api('/odm/manifest-template', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fetcherCode:wizard.fetcher, presetCode:wizard.preset||null})})
-      wizard.template = t
-      wizard.fixed = (t._plantilla && t._plantilla.params_fijados_por_preset) || []
-      const tparams = ((t.resources||[])[0]||{}).params || []
-      wizard.form.params = tparams.map(p => ({key:p.key, value:p.value}))
-      if (!wizard.form.params.some(p=>p.key==='root_url')) wizard.form.params.push({key:'root_url', value:''})
-    }) }
-    function pickPub() {
-      const k = wizard.form.pub
-      if (k && catalog.publishers[k]) wizard.form.publisher = {acronimo:k, ...catalog.publishers[k]}
-      else if (k && k.startsWith('odm:')) {
-        const p = odmPubs.value.find(x => x.id === k.slice(4)) || {}
-        wizard.form.publisher = {acronimo: p.acronimo||p.nombre||'', nombre: p.nombre||'', nivel: p.nivel||'MUNICIPAL'}
-      }
-      else wizard.form.publisher = {acronimo:'',nombre:'',nivel:'MUNICIPAL',pais:'España',portal_url:''}
-    }
-    function addParam() { wizard.form.params.push({key:'', value:''}) }
-    function delParam(i) { wizard.form.params.splice(i,1) }
-    function _payload(dry) {
-      const params = {}; wizard.form.params.forEach(p => { if (p.key) params[p.key]=p.value })
-      return JSON.stringify({fetcher_code:wizard.fetcher, preset_code:wizard.preset||null,
-        publisher:wizard.form.publisher, name:wizard.form.name, schedule:wizard.form.schedule, params, dry_run:dry})
-    }
-    function previewSource() { run(async () => {
-      const out = await api('/sources/new', {method:'POST',headers:{'Content-Type':'application/json'},body:_payload(true)})
-      wizard.manifest = out.manifest; wizard.done=null
-    }) }
-    function createSource() { run(async () => {
-      const out = await api('/sources/new', {method:'POST',headers:{'Content-Type':'application/json'},body:_payload(false)})
-      wizard.done = out.result; wizard.manifest = out.manifest
-      await loadRecursos()
-    }) }
-
-    onMounted(() => {
-      loadStatus(); run(loadOnboarding); run(loadRecursos)
-      api('/version').then(d=>appVersion.value=d.version).catch(()=>{})
-      setInterval(loadStatus, 15000)
-      // Revalidar el registro de forma continua: si el operador da de baja la app, la consola vuelve sola al estado no registrado.
-      setInterval(loadOnboarding, 5000)
+    const subsFiltradas = computed(() => {
+      const t = q.value.trim().toLowerCase()
+      const arr = subs.value || []
+      if (!t) return arr
+      return arr.filter(s => ((s.resourceName||s.resourceId||'')+' '+(s.publisher||'')).toLowerCase().includes(t))
     })
 
-    return { view, nav, err, busy, appVersion, ram, ramPct, ramColor, status, syncLabel,
-             catalog, resources, subscriptions, executions, notifications, fetchers, odmPubs,
-             filtros, modal, showWizard, wizard, presetsOf, pubsDisponibles, pubsOdmExtra,
-             subByResource, lastOk, pendientes, recursosFiltrados,
-             esNodriza, expandidas, toggleNodriza, hijosDe, topNivel,
-             go, fmtAgo, enOdm, suscribir, desuscribir, refrescar, borrarRecurso, confirmarBorrado, delRecurso, clonar,
-             help, onboarding, tokenInput, proposeForm, proposeDone,
-             filtrosRec, recepcionesFiltradas, publishersRec,
-             guardarToken, proponerRecurso, loadOnboarding,
-             getTemplate, pickPub, addParam, delParam, previewSource, createSource }
+    const EVT = {
+      suscripcion_activada:    { icon:'➕', label:'Suscripción activada', cls:'bg-emerald-900/40 text-emerald-300' },
+      suscripcion_desactivada: { icon:'➖', label:'Suscripción retirada',  cls:'bg-gray-700 text-gray-300' },
+      anulada:                 { icon:'⛔', label:'Registro anulado',       cls:'bg-red-900/40 text-red-300' },
+      publicado:               { icon:'✅', label:'Publicado en CKAN',      cls:'bg-blue-900/40 text-blue-300' },
+    }
+    const evtMeta = (k) => EVT[k] || { icon:'•', label:k||'evento', cls:'bg-gray-700 text-gray-300' }
+    const evtDetalle = (e) => {
+      if (e.kind==='suscripcion_activada') return (e.resourceName||e.resourceId||'') + (e.publisher? ' · '+e.publisher : '')
+      if (e.kind==='suscripcion_desactivada') return e.resourceId || '—'
+      if (e.kind==='publicado') return (e.package||'') + (e.result? ' ('+e.result+')' : '') + (e.datasetId? ' · ds '+e.datasetId : '')
+      return '—'
+    }
+
+    onMounted(() => { load(); setInterval(load, 5000) })
+
+    return { view, nav, help, err, appVersion, ram, ramPct, ramColor, status,
+             subs, events, q, subsFiltradas, fmt, fday, isAuto, evtMeta, evtDetalle, go }
   },
   template: `
   <!-- Sidebar -->
@@ -287,19 +105,17 @@ createApp({
       <p class="text-xs text-gray-400 mt-0.5">Suscriptor de OpenDataManager</p>
     </div>
     <nav class="flex-1 p-3 space-y-0.5 overflow-y-auto">
-      <div v-for="n in nav" :key="n.id" class="nav-item" :class="{active: view===n.id}" @click="go(n.id)">{{ n.label }}</div>
-      <div class="nav-item" @click="help=true">❓ Ayuda</div>
+      <div v-for="n in nav" :key="n.id" class="nav-item" :class="{active: view===n.id && !help}" @click="go(n.id)">{{ n.label }}</div>
+      <div class="nav-item" :class="{active: help}" @click="help=true">❓ Ayuda</div>
     </nav>
     <div class="p-4 border-t border-gray-700 space-y-2">
-      <div class="stline"><span>ODM</span>
-        <span :style="{color: status.odm==='online'?'#34d399':'#f87171'}">● {{ status.odm }}</span></div>
+      <div class="stline"><span>Recepción</span>
+        <span v-if="status.operativa" style="color:#34d399" :title="'webhook: '+(status.webhook_url||'—')">✓ operativa</span>
+        <span v-else style="color:#fbbf24" :title="(status.config_missing||[]).length ? 'falta: '+status.config_missing.join(', ') : 'pendiente'">✗ falta config</span></div>
       <div class="stline"><span>CKAN</span>
         <span :style="{color: status.ckan_configured?'#34d399':'#6b7280'}">{{ status.ckan_configured ? 'configurado' : 'sin configurar' }}</span></div>
-      <div class="stline"><span>Registro en ODM</span>
-        <span v-if="status.application" style="color:#34d399" :title="'webhook: '+(status.webhook_url||'—')">✓ registrada</span>
-        <span v-else style="color:#fbbf24" :title="(status.config_missing||[]).length ? 'faltan: '+status.config_missing.join(', ') : 'pendiente'">✗ pendiente</span></div>
-      <div class="stline"><span>Sincronización</span>
-        <span :style="{color: (status.sync&&status.sync.last_ok)?'#34d399':'#fbbf24'}" :title="(status.sync&&status.sync.last_error)||''">{{ syncLabel }}</span></div>
+      <div class="stline"><span>Suscripciones</span>
+        <span class="tabular-nums" style="color:#9ca3af">{{ status.subscriptions_count }}</span></div>
       <div v-if="ram.total>0">
         <div class="stline mb-1"><span>RAM consumida</span><span :style="{color:ramColor}" class="tabular-nums">{{ ((ram.total-ram.avail)/1024).toFixed(1) }} / {{ (ram.total/1024).toFixed(1) }} GB</span></div>
         <div class="h-1.5 bg-gray-700 rounded-full overflow-hidden"><div class="h-full rounded-full" :style="{width:ramPct+'%', background:ramColor}"></div></div>
@@ -312,158 +128,87 @@ createApp({
   <div class="flex-1 overflow-y-auto p-6">
     <div v-if="err" class="card border-red-700 bg-red-900/40 text-red-200 px-4 py-2.5 mb-4 text-sm">⚠️ {{ err }}</div>
 
-    <!-- La app aún no está registrada en ODM: la registra el operador; el token llega por webhook -->
-    <div v-if="!onboarding.operativa" class="card border-amber-700 bg-amber-900/20 text-amber-200 px-4 py-3 mb-4 text-sm">
+    <div v-if="!status.operativa" class="card border-amber-700 bg-amber-900/20 text-amber-200 px-4 py-3 mb-4 text-sm">
       <div class="flex items-start gap-3">
         <span class="text-lg leading-none">⏳</span>
         <div class="flex-1">
-          <p>Esta aplicación aún no está registrada en ODM. La registra el operador; en cuanto te asigne acceso, el token llega solo por webhook y la consola queda operativa.</p>
-          <details class="mt-2">
-            <summary class="text-xs text-amber-300/70 cursor-pointer">¿Tienes ya un token? Pégalo como respaldo</summary>
-            <div class="flex gap-2 mt-2">
-              <input v-model="tokenInput" placeholder="odm_…" class="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200">
-              <button class="btn btn-primary whitespace-nowrap" :disabled="busy || !tokenInput" @click="guardarToken">Guardar token</button>
-            </div>
-          </details>
+          <p>Esta aplicación aún no está operativa para recibir datos.</p>
+          <p v-if="(status.config_missing||[]).length" class="mt-1 text-amber-300/90">Falta configurar: <span class="font-semibold">{{ status.config_missing.join(', ') }}</span>.</p>
+          <p class="mt-1 text-amber-300/80">La configuración la pone el operador (el secreto compartido del webhook y la URL pública). No hay token ni alta que solicitar desde aquí.</p>
         </div>
       </div>
     </div>
-    </div>
 
-    <!-- Recursos -->
-    <div v-if="view==='recursos'">
-      <div class="flex items-center justify-between mb-1">
-        <h2 class="text-xl font-bold text-gray-100">Recursos</h2>
+    <!-- Ayuda -->
+    <div v-if="help">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold text-white">Ayuda</h2>
+        <button class="btn btn-ghost" @click="help=false">✕ cerrar</button>
       </div>
-      <p class="text-sm text-gray-400 mb-5">Orígenes de datos de los que se abastece CKAN-Jerez.</p>
-
-      <div v-if="onboarding.eventos && onboarding.eventos.length" class="card p-5 mb-5">
-        <h3 class="text-sm font-semibold text-gray-200 mb-2">Avisos de ODM</h3>
-        <div v-for="(e,i) in onboarding.eventos" :key="i" class="text-sm mb-1"
-             :class="e.estadoAprobacion==='rechazado' ? 'text-red-300' : 'text-gray-300'">
-          <b>{{ e.name || e.resourceId }}</b> — {{ e.estadoAprobacion }}<span v-if="e.motivoRechazo"> · motivo: {{ e.motivoRechazo }}</span>
-        </div>
-      </div>
-
-
-      <div class="card p-5 mb-6">
-        <div class="flex flex-wrap items-center gap-3 mb-4">
-          <input v-model="filtros.q" placeholder="Buscar por nombre o publisher…" class="flex-1 min-w-64 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200">
-          <select v-model="filtros.pub" class="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
-            <option value="">Publisher: todos</option>
-            <option v-for="p in pubsDisponibles" :key="p" :value="p">{{ p }}</option>
-          </select>
-          <label class="text-xs text-gray-400 flex items-center gap-1.5"><input type="checkbox" v-model="filtros.soloSus"> solo suscritos</label>
-          <span class="text-xs text-gray-500 ml-auto">{{ recursosFiltrados.length }} / {{ resources.length }}</span>
-        </div>
-        <table class="w-full"><thead><tr><th>Nombre</th><th>Publisher</th><th>Suscripción</th><th>Última ejecución OK</th></tr></thead>
-          <tbody>
-            <template v-for="r in topNivel" :key="r.id">
-            <tr>
-              <td class="text-gray-200" :title="r.id">
-                <button v-if="esNodriza(r) && hijosDe(r.id).length" @click="toggleNodriza(r.id)" style="border:0;background:none;cursor:pointer;color:#c4b5fd" :title="(expandidas.has(r.id)?'Contraer':'Desplegar')+' recursos descubiertos'">{{ expandidas.has(r.id) ? '▾' : '▸' }}</button>
-                <span v-if="esNodriza(r)" title="Nave nodriza (descubre recursos)">🛰️</span>
-                <span v-else title="Recurso (hoja)">📄</span>
-                {{ r.name }}
-                <span v-if="esNodriza(r) && hijosDe(r.id).length" class="text-gray-500" style="font-size:.7rem">({{ hijosDe(r.id).length }} descubiertos)</span>
-              </td>
-              <td class="text-gray-400">{{ r.publisher || '—' }}</td>
-              <td>
-                <button v-if="subByResource[r.id]" class="pill" style="background:#064e3b;color:#34d399;border:0;cursor:pointer" :disabled="busy" @click="desuscribir(r.id)" title="Pulsar para desuscribir">✓ suscrito</button>
-                <button v-else class="pill bg-gray-700 text-gray-300" style="border:0;cursor:pointer" :disabled="busy || !status.application" @click="suscribir(r.id)" :title="status.application ? 'Pulsar para suscribir' : 'Requiere Application registrada'">suscribir</button>
-              </td>
-              <td :style="{color: (lastOk[r.id] && (Date.now()-new Date(lastOk[r.id]+'Z').getTime())<3600000) ? '#34d399' : '#6b7280'}">{{ fmtAgo(lastOk[r.id]) }}</td>
-            </tr>
-            <tr v-for="c in (expandidas.has(r.id) ? hijosDe(r.id) : [])" :key="c.id" style="background:rgba(0,0,0,.25)">
-              <td class="text-gray-300" :title="c.id"><span class="text-gray-600" style="padding-left:1.25rem">└─</span> {{ c.name }} <span class="pill" style="background:#3b0764;color:#c4b5fd;font-size:.62rem">descubierto</span></td>
-              <td class="text-gray-500">{{ c.publisher || '—' }}</td>
-              <td>
-                <button v-if="subByResource[c.id]" class="pill" style="background:#064e3b;color:#34d399;border:0;cursor:pointer" :disabled="busy" @click="desuscribir(c.id)" title="Pulsar para desuscribir">✓ suscrito</button>
-                <button v-else class="pill bg-gray-700 text-gray-300" style="border:0;cursor:pointer" :disabled="busy || !status.application" @click="suscribir(c.id)" :title="status.application ? 'Pulsar para suscribir' : 'Requiere Application registrada'">suscribir</button>
-              </td>
-              <td :style="{color: (lastOk[c.id] && (Date.now()-new Date(lastOk[c.id]+'Z').getTime())<3600000) ? '#34d399' : '#6b7280'}">{{ fmtAgo(lastOk[c.id]) }}</td>
-            </tr>
-            </template>
-            <tr v-if="!topNivel.length"><td colspan="4" class="text-gray-500">Sin recursos con ese filtro.</td></tr>
-          </tbody></table>
-      </div>
-
-
-    </div>
-
-    <!-- Actividad -->
-    <div v-else-if="view==='actividad'">
-      <h2 class="text-xl font-bold text-gray-100 mb-1">Recepciones</h2>
-      <p class="text-sm text-gray-400 mb-5">Entregas que ODM ha enviado por webhook a CKAN-Jerez con datos nuevos.</p>
-      <div class="card p-5 mb-6">
-        <div class="flex flex-wrap items-end gap-3 mb-4">
-          <label class="text-xs text-gray-400">Desde<input type="date" v-model="filtrosRec.desde" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
-          <label class="text-xs text-gray-400">Hasta<input type="date" v-model="filtrosRec.hasta" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
-          <label class="text-xs text-gray-400">Dataset<input v-model="filtrosRec.dataset" placeholder="nombre/id…" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
-          <label class="text-xs text-gray-400">Publicador<select v-model="filtrosRec.pub" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"><option value="">todos</option><option v-for="p in publishersRec" :key="p" :value="p">{{ p }}</option></select></label>
-          <label class="text-xs text-gray-400">Estado<select v-model="filtrosRec.estado" class="block mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"><option value="">todos</option><option value="ok">OK (2xx)</option><option value="error">error</option></select></label>
-          <button class="btn btn-ghost" @click="filtrosRec.desde='';filtrosRec.hasta='';filtrosRec.dataset='';filtrosRec.estado='';filtrosRec.pub=''">Limpiar</button>
-          <span class="text-xs text-gray-500 ml-auto">{{ recepcionesFiltradas.length }} / {{ notifications.length }}</span>
-        </div>
-        <table class="w-full"><thead><tr><th>Enviado</th><th>Publicador</th><th>Dataset</th><th>HTTP</th><th>Error</th></tr></thead>
-          <tbody><tr v-for="n in recepcionesFiltradas" :key="n.id">
-            <td class="text-gray-500">{{ fmtAgo(n.sentAt) }}</td><td class="text-gray-400">{{ n.publisher || '—' }}</td><td :title="n.datasetId">{{ n.datasetName || n.datasetId || '—' }}</td>
-            <td><span class="pill" :style="{background: n.statusCode>=200&&n.statusCode<300?'#064e3b':'#7f1d1d', color: n.statusCode>=200&&n.statusCode<300?'#34d399':'#f87171'}">{{ n.statusCode || '—' }}</span></td>
-            <td class="text-red-300">{{ n.errorMessage || '' }}</td>
-          </tr><tr v-if="!recepcionesFiltradas.length"><td colspan="5" class="text-gray-500">Sin recepciones con ese filtro.</td></tr></tbody></table>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal -->
-  <div v-if="modal.open" class="fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,.6)" @click.self="modal.open=false">
-    <div class="card p-5 w-full max-w-md mx-4">
-      <h3 class="text-sm font-semibold text-yellow-400 mb-2">⚠️ {{ modal.titulo }}</h3>
-      <p class="text-sm text-gray-300">{{ modal.texto }}</p>
-      <div class="mt-4 text-right"><button class="btn btn-primary" @click="modal.open=false">Entendido</button></div>
-    </div>
-  </div>
-
-
-  <!-- #18 Modal de borrado con hard-delete -->
-  <div v-if="delRecurso.open" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="delRecurso.open=false">
-    <div class="bg-gray-800 border border-red-700/50 rounded-xl p-6 w-[440px] shadow-2xl">
-      <h3 class="text-base font-semibold text-white mb-2">Borrar recurso</h3>
-      <p class="text-sm text-gray-300 mb-3">Se borrará en ODM el recurso «{{ delRecurso.nombre }}». Por defecto va a la papelera (recuperable).</p>
-      <label class="flex items-start gap-2 mb-4 cursor-pointer">
-        <input type="checkbox" v-model="delRecurso.hard" class="mt-0.5 accent-red-500">
-        <span class="text-sm text-red-300">Eliminar permanentemente <span class="block text-xs text-gray-500">Sin marcar → papelera. Marcado → borrado irreversible (BD + disco).</span></span>
-      </label>
-      <div class="flex justify-end gap-2">
-        <button class="btn btn-ghost" @click="delRecurso.open=false">Cancelar</button>
-        <button class="btn" :class="delRecurso.hard ? 'btn-danger' : 'btn-primary'" :disabled="busy" @click="confirmarBorrado">{{ delRecurso.hard ? 'Eliminar permanentemente' : 'Mover a papelera' }}</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Ayuda -->
-  <div v-if="help" class="fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,.6)" @click.self="help=false">
-    <div class="card p-6 w-full max-w-2xl mx-4" style="max-height:85vh;overflow-y:auto">
-      <div class="flex items-center justify-between mb-3">
-        <h3 class="text-base font-semibold text-blue-300">❓ Ayuda · cómo funciona ckan-jerez</h3>
-        <button class="text-gray-400 hover:text-white" @click="help=false">✕</button>
-      </div>
-      <div class="text-sm text-gray-300 space-y-3 leading-relaxed">
-        <p><b>ckan-jerez</b> es un <b>consumidor</b> de OpenDataManager (ODM): no produce datos, los recibe de ODM y los publica de forma homogénea en CKAN.</p>
-        <p class="text-gray-200 font-medium">Puesta en marcha</p>
-        <ol class="list-decimal ml-5 space-y-1">
-          <li><b>Registro</b>: el operador registra esta aplicación en ODM. No se solicita desde aquí.</li>
-          <li><b>Token</b>: ODM emite un token y lo entrega por webhook; la consola queda operativa sola. Si hiciera falta, puede pegarse a mano como respaldo.</li>
-          <li><b>Suscripción</b>: en «Recursos» te suscribes a los que te interesen; ODM avisa por webhook cuando hay datos nuevos.</li>
-          <li><b>Publicación</b>: ckan-jerez homogeneiza y publica en CKAN lo que recibe.</li>
+      <div class="card p-5 mb-4 text-sm leading-relaxed space-y-2">
+        <h3 class="text-white font-semibold">Puesta en marcha</h3>
+        <ol class="list-decimal ml-5 space-y-1 text-gray-300">
+          <li>El operador da de alta este suscriptor en ODM, apuntando a su webhook y con un secreto compartido.</li>
+          <li>Ese mismo secreto se configura aquí (<code class="text-gray-200">ODM_WEBHOOK_SECRET</code>) junto con la URL pública. No interviene ningún token.</li>
+          <li>El operador gobierna las suscripciones desde ODM: decide a qué recursos queda suscrito ckan-jerez.</li>
+          <li>ODM empuja por webhook tanto los datos como las altas y bajas de suscripción; ckan-jerez los publica en CKAN.</li>
         </ol>
-        <p class="text-gray-200 font-medium">Productor vs. consumidor</p>
-        <p>ODM es el <b>productor</b>: rastrea portales y genera los datos. ckan-jerez es <b>consumidor</b>: se suscribe y publica en CKAN. La creación y el rastreo de fuentes son responsabilidad exclusiva de ODM.</p>
       </div>
-      <div class="mt-4 text-right"><button class="btn btn-primary" @click="help=false">Entendido</button></div>
+      <div class="card p-5 text-sm leading-relaxed space-y-2">
+        <h3 class="text-white font-semibold">Productor y consumidor</h3>
+        <p class="text-gray-300">ODM es un <span class="text-gray-100">productor neutral</span>: expone datos sin conocer su destino. ckan-jerez es un <span class="text-gray-100">consumidor homogeneizador</span>: cualquier dataset de ODM se proyecta de forma uniforme a un package CKAN (DCAT).</p>
+        <p class="text-gray-400">El canal es push puro y firmado por HMAC. ckan-jerez no llama a ODM: solo recibe, verifica la firma y publica.</p>
+      </div>
+    </div>
+
+    <!-- Suscripciones -->
+    <div v-else-if="view==='suscripciones'">
+      <div class="flex items-center justify-between mb-4 gap-3">
+        <h2 class="text-xl font-bold text-white">Suscripciones</h2>
+        <input v-model="q" placeholder="filtrar recurso u organismo…" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm w-64" />
+      </div>
+      <div class="card overflow-hidden">
+        <table class="w-full" v-if="subsFiltradas.length">
+          <thead><tr><th>Recurso</th><th>Organismo</th><th>Versión</th><th>Desde</th></tr></thead>
+          <tbody>
+            <tr v-for="s in subsFiltradas" :key="s.subscriptionId || s.resourceId">
+              <td class="text-gray-100">{{ s.resourceName || s.resourceId }}</td>
+              <td class="text-gray-400">{{ s.publisher || '—' }}</td>
+              <td>
+                <span class="text-gray-300">{{ s.pinnedVersion ? 'fijada '+s.pinnedVersion : 'última' }}</span>
+                <span v-if="isAuto(s.autoUpgrade)" class="pill bg-blue-900/40 text-blue-300 ml-2">auto</span>
+              </td>
+              <td class="text-gray-500 tabular-nums">{{ fday(s.since) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-else class="p-8 text-center text-sm text-gray-500">
+          <p v-if="status.operativa">Operativa y a la espera. El operador aún no te ha suscrito a ningún recurso en ODM.</p>
+          <p v-else>Sin suscripciones. Aparecerán aquí en cuanto el operador asigne recursos desde ODM.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recepciones -->
+    <div v-else-if="view==='recepciones'">
+      <h2 class="text-xl font-bold text-white mb-4">Recepciones</h2>
+      <p class="text-xs text-gray-500 mb-3">Bitácora de lo que ODM ha empujado a este suscriptor (en memoria; se reinicia con el servicio).</p>
+      <div class="card overflow-hidden">
+        <table class="w-full" v-if="events.length">
+          <thead><tr><th>Cuándo</th><th>Evento</th><th>Detalle</th></tr></thead>
+          <tbody>
+            <tr v-for="(e,i) in events" :key="i">
+              <td class="text-gray-500 tabular-nums whitespace-nowrap">{{ fmt(e.ts) }}</td>
+              <td><span class="pill" :class="evtMeta(e.kind).cls">{{ evtMeta(e.kind).icon }} {{ evtMeta(e.kind).label }}</span></td>
+              <td class="text-gray-300">{{ evtDetalle(e) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-else class="p-8 text-center text-sm text-gray-500">Sin actividad todavía.</div>
+      </div>
     </div>
   </div>
-  `
+  `,
 }).mount('#app')
 </script>
 </body>
