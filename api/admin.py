@@ -259,16 +259,26 @@ def do_bootstrap(body: dict = Body(default={})) -> Any:
 
 @router.get("/onboarding")
 def onboarding_state() -> Any:
-    """Estado del alta para el panel: solicitud enviada, token presente y si la
-    aplicación ya es operativa contra ODM."""
+    """Estado del alta para el panel: valida contra ODM si la app sigue dada de
+    alta (token vivo). Si ODM responde que no, des-registra; si no hay contacto,
+    marca 'sin contacto' SIN des-registrar."""
+    global _client
     from app import onboarding
     st = onboarding.state()
     if st["tiene_token"]:
         try:
-            _client_or_error().applications()   # prueba autenticada
-            st["operativa"] = True
-        except Exception as e:  # noqa: BLE001
+            who = _client_or_error().whoami()   # username si el token sigue vivo
+            if who:
+                st["operativa"] = True
+            else:
+                onboarding.desregistrar()       # ODM dice que ya no estamos dados de alta
+                _client = None
+                st = onboarding.state()
+                st["operativa"] = False
+                st["desregistrada"] = True
+        except Exception as e:  # noqa: BLE001 — ODM inaccesible: NO des-registrar
             st["operativa"] = False
+            st["sin_contacto"] = True
             st["token_error"] = str(e)
     else:
         st["operativa"] = False

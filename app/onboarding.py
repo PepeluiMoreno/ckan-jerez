@@ -44,6 +44,17 @@ def set_token(token: str, username: Optional[str] = None) -> None:
     _write(data)
 
 
+def desregistrar() -> None:
+    """Borra el token y el alta local: la aplicación deja de estar registrada
+    (p. ej. si ODM la eliminó). El panel volverá a ofrecer 'solicitar alta'."""
+    data = _read()
+    data.pop("token", None)
+    data.pop("app_username", None)
+    data.pop("token_origen", None)
+    data["solicitud"] = None
+    _write(data)
+
+
 def set_solicitud(solicitud: dict) -> None:
     data = _read()
     data["solicitud"] = solicitud

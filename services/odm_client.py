@@ -375,6 +375,19 @@ class OdmClient:
         """Lista las Applications (para encontrar la de este suscriptor por nombre)."""
         return self.execute(Q_APPLICATIONS)["applications"]
 
+    def whoami(self) -> Optional[str]:
+        """Username si el token Bearer sigue siendo una app válida en ODM, o None
+        si ODM responde que no (token revocado/borrado). Propaga si no hay
+        contacto (para distinguir 'sin contacto' de 'des-registrada')."""
+        try:
+            data = self.execute("query { whoamiAplicacion }")
+        except Exception as e:  # noqa: BLE001
+            blob = str(e).lower()
+            if any(h in blob for h in ("401", "403", "unauthorized", "no autorizado", "forbidden")):
+                return None
+            raise
+        return (data or {}).get("whoamiAplicacion")
+
     def resources(self, active_only: bool = False) -> list[dict]:
         """Lista recursos (id, name, publisher) para resolver IDs por nombre."""
         return self.execute(Q_RESOURCES, {"activeOnly": active_only})["resources"]
