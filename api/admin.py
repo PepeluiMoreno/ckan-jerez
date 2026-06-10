@@ -296,9 +296,21 @@ def onboarding_solicitar(body: dict = Body(...)) -> Any:
     nombre = (body.get("nombre") or APP_NAME).strip()
     contacto = (body.get("contacto") or "").strip() or None
     proposito = (body.get("proposito") or "").strip() or None
+    descripcion = (body.get("descripcion") or "").strip() or None
+    persona_contacto = (body.get("persona_contacto") or body.get("personaContacto") or "").strip() or None
+    email = (body.get("email") or "").strip() or None
+    telefono = (body.get("telefono") or "").strip() or None
+    github_url = (body.get("github_url") or body.get("githubUrl") or "").strip() or None
+    faltan = [k for k, v in {"nombre": nombre, "descripcion": descripcion,
+                             "persona_contacto": persona_contacto, "email": email,
+                             "github_url": github_url}.items() if not v]
+    if faltan:
+        raise HTTPException(status_code=400, detail="Faltan campos obligatorios: " + ", ".join(faltan))
     try:
         sol = OdmClient(s.odm_api_url).crear_solicitud_ingreso(
             nombre=nombre, contacto=contacto, proposito=proposito,
+            descripcion=descripcion, persona_contacto=persona_contacto, email=email,
+            telefono=telefono, github_url=github_url,
             callback_url=(s.webhook_url or None), callback_secret=(s.odm_webhook_secret or None))
         onboarding.set_solicitud(sol)
         return sol

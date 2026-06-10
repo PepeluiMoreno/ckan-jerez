@@ -205,6 +205,11 @@ class OdmClient:
     # ── Alta self-service (opción B): solicitud de ingreso, sin autenticación ─
     def crear_solicitud_ingreso(self, *, nombre: str, contacto: Optional[str] = None,
                                 proposito: Optional[str] = None,
+                                descripcion: Optional[str] = None,
+                                persona_contacto: Optional[str] = None,
+                                email: Optional[str] = None,
+                                telefono: Optional[str] = None,
+                                github_url: Optional[str] = None,
                                 callback_url: Optional[str] = None,
                                 callback_secret: Optional[str] = None) -> dict:
         """Registra una solicitud de alta como aplicación consumidora. Mutación
@@ -215,6 +220,16 @@ class OdmClient:
             inp["contacto"] = contacto
         if proposito:
             inp["proposito"] = proposito
+        if descripcion:
+            inp["descripcion"] = descripcion
+        if persona_contacto:
+            inp["personaContacto"] = persona_contacto
+        if email:
+            inp["email"] = email
+        if telefono:
+            inp["telefono"] = telefono
+        if github_url:
+            inp["githubUrl"] = github_url
         if callback_url:
             inp["callbackUrl"] = callback_url
         if callback_secret:
