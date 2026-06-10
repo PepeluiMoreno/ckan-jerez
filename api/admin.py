@@ -301,6 +301,9 @@ def onboarding_solicitar(body: dict = Body(...)) -> Any:
     email = (body.get("email") or "").strip() or None
     telefono = (body.get("telefono") or "").strip() or None
     github_url = (body.get("github_url") or body.get("githubUrl") or "").strip() or None
+    consumption_mode = (body.get("consumption_mode") or body.get("consumptionMode") or "webhook").strip() or "webhook"
+    webhook_url = (body.get("webhook_url") or body.get("webhookUrl") or "").strip() or (s.webhook_url or None)
+    callback = None if consumption_mode == "graphql" else webhook_url
     faltan = [k for k, v in {"nombre": nombre, "descripcion": descripcion,
                              "persona_contacto": persona_contacto, "email": email,
                              "github_url": github_url}.items() if not v]
@@ -310,8 +313,8 @@ def onboarding_solicitar(body: dict = Body(...)) -> Any:
         sol = OdmClient(s.odm_api_url).crear_solicitud_ingreso(
             nombre=nombre, contacto=contacto, proposito=proposito,
             descripcion=descripcion, persona_contacto=persona_contacto, email=email,
-            telefono=telefono, github_url=github_url,
-            callback_url=(s.webhook_url or None), callback_secret=(s.odm_webhook_secret or None))
+            telefono=telefono, github_url=github_url, consumption_mode=consumption_mode,
+            callback_url=callback, callback_secret=(s.odm_webhook_secret or None))
         onboarding.set_solicitud(sol)
         return sol
     except Exception as e:  # noqa: BLE001

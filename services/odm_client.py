@@ -210,6 +210,7 @@ class OdmClient:
                                 email: Optional[str] = None,
                                 telefono: Optional[str] = None,
                                 github_url: Optional[str] = None,
+                                consumption_mode: Optional[str] = None,
                                 callback_url: Optional[str] = None,
                                 callback_secret: Optional[str] = None) -> dict:
         """Registra una solicitud de alta como aplicación consumidora. Mutación
@@ -230,6 +231,8 @@ class OdmClient:
             inp["telefono"] = telefono
         if github_url:
             inp["githubUrl"] = github_url
+        if consumption_mode:
+            inp["consumptionMode"] = consumption_mode
         if callback_url:
             inp["callbackUrl"] = callback_url
         if callback_secret:
