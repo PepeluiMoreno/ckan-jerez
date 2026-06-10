@@ -134,7 +134,7 @@ Q_RESOURCES = (
 )
 Q_DATASET_SUBSCRIPTIONS = (
     "query Subs($appId: String, $resourceId: String) {"
-    "  datasetSubscriptions(applicationId: $appId, resourceId: $resourceId) {"
+    "  resourceSubscriptions(applicationId: $appId, resourceId: $resourceId) {"
     "    id applicationId resourceId autoUpgrade pinnedVersion currentVersion"
     "  }"
     "}"
@@ -411,7 +411,7 @@ class OdmClient:
                               resource_id: Optional[str] = None) -> list[dict]:
         """Lista suscripciones (para no resuscribir lo ya suscrito)."""
         return self.execute(Q_DATASET_SUBSCRIPTIONS,
-                            {"appId": application_id, "resourceId": resource_id})["datasetSubscriptions"]
+                            {"appId": application_id, "resourceId": resource_id})["resourceSubscriptions"]
 
     def unsubscribe_resource(self, subscription_id: str) -> bool:
         """Da de baja una suscripción (por su id de suscripción)."""
