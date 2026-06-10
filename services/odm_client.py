@@ -71,15 +71,15 @@ M_IMPORT_MANIFEST = (
     "mutation Importar($manifest: JSON!) { importManifest(manifest: $manifest) }"
 )
 M_CREATE_APPLICATION = (
-    "mutation CrearApp($input: CreateApplicationInput!) {"
-    "  createApplication(input: $input) {"
+    "mutation CrearApp($input: CreateSubscriberInput!) {"
+    "  createSubscriber(input: $input) {"
     "    id name active consumptionMode webhookUrl subscribedProjects"
     "  }"
     "}"
 )
 M_SET_APP_WEBHOOK = (
     "mutation Webhook($id: String!, $url: String!, $secret: String!) {"
-    "  setApplicationWebhook(id: $id, webhookUrl: $url, webhookSecret: $secret) {"
+    "  setSubscriberWebhook(id: $id, webhookUrl: $url, webhookSecret: $secret) {"
     "    id name webhookUrl consumptionMode"
     "  }"
     "}"
@@ -102,7 +102,7 @@ Q_RESOURCE_EXECUTIONS = (
 )
 Q_APP_NOTIFICATIONS = (
     "query Entregas($applicationId: String) {"
-    "  applicationNotifications(applicationId: $applicationId) {"
+    "  subscriberNotifications(applicationId: $applicationId) {"
     "    id applicationId datasetId sentAt statusCode responseBody errorMessage publisher datasetName"
     "  }"
     "}"
@@ -125,7 +125,7 @@ M_UNSUBSCRIBE_RESOURCE = (
     "mutation Desuscribir($id: String!) { unsubscribeResource(id: $id) }"
 )
 Q_APPLICATIONS = (
-    "query Apps { applications { id name webhookUrl consumptionMode active } }"
+    "query Apps { subscribers { id name webhookUrl consumptionMode active } }"
 )
 Q_RESOURCES = (
     "query Recursos($activeOnly: Boolean!) {"
@@ -365,12 +365,12 @@ class OdmClient:
             inp["description"] = description
         if webhook_url is not None:
             inp["webhookUrl"] = webhook_url
-        return self.execute(M_CREATE_APPLICATION, {"input": inp})["createApplication"]
+        return self.execute(M_CREATE_APPLICATION, {"input": inp})["createSubscriber"]
 
     def set_application_webhook(self, application_id: str, webhook_url: str, webhook_secret: str) -> dict:
         """Registra el endpoint+secreto de webhook de esta Application en ODM."""
         return self.execute(M_SET_APP_WEBHOOK,
-                            {"id": application_id, "url": webhook_url, "secret": webhook_secret})["setApplicationWebhook"]
+                            {"id": application_id, "url": webhook_url, "secret": webhook_secret})["setSubscriberWebhook"]
 
     def subscribe_resource(self, *, application_id: str, resource_id: str,
                            auto_upgrade: str = "patch", pinned_version: Optional[str] = None) -> dict:
@@ -386,12 +386,12 @@ class OdmClient:
 
     def application_notifications(self, application_id: Optional[str] = None) -> list[dict]:
         """Auditoría de entregas de webhook a esta Application (sentAt, statusCode, error)."""
-        return self.execute(Q_APP_NOTIFICATIONS, {"applicationId": application_id})["applicationNotifications"]
+        return self.execute(Q_APP_NOTIFICATIONS, {"applicationId": application_id})["subscriberNotifications"]
 
     # ── Resolución (para el bootstrap del suscriptor) ─────────────────────────
     def applications(self) -> list[dict]:
         """Lista las Applications (para encontrar la de este suscriptor por nombre)."""
-        return self.execute(Q_APPLICATIONS)["applications"]
+        return self.execute(Q_APPLICATIONS)["subscribers"]
 
     def whoami(self) -> Optional[str]:
         """Username si el token Bearer sigue siendo una app válida en ODM, o None
