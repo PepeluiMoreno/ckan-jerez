@@ -398,13 +398,13 @@ class OdmClient:
         si ODM responde que no (token revocado/borrado). Propaga si no hay
         contacto (para distinguir 'sin contacto' de 'des-registrada')."""
         try:
-            data = self.execute("query { whoamiAplicacion }")
+            data = self.execute("query { whoamiSubscriber }")
         except Exception as e:  # noqa: BLE001
             blob = str(e).lower()
             if any(h in blob for h in ("401", "403", "unauthorized", "no autorizado", "forbidden")):
                 return None
             raise
-        return (data or {}).get("whoamiAplicacion")
+        return (data or {}).get("whoamiSubscriber")
 
     def resources(self, active_only: bool = False) -> list[dict]:
         """Lista recursos (id, name, publisher) para resolver IDs por nombre."""
