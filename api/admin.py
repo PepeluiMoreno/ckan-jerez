@@ -102,6 +102,58 @@ def status() -> dict:
     return out
 
 
+@router.get("/mapping")
+def mapping_all() -> Any:
+    """Overrides de mapeo CKAN por recurso (organización, licencia, título…)."""
+    from app import mapping_state
+    return mapping_state.snapshot()
+
+
+@router.post("/mapping")
+def mapping_set(body: dict = Body(...)) -> Any:
+    """Fija overrides para un recurso. Body: {resource_id, overrides:{…}}."""
+    from app import mapping_state
+    rid = (body or {}).get("resource_id")
+    if not rid:
+        raise HTTPException(status_code=400, detail="falta resource_id")
+    return mapping_state.set(rid, (body or {}).get("overrides") or {})
+
+
+@router.post("/mapping/delete")
+def mapping_delete(body: dict = Body(...)) -> Any:
+    """Elimina los overrides de un recurso (vuelve al mapeo automático)."""
+    from app import mapping_state
+    rid = (body or {}).get("resource_id")
+    if not rid:
+        raise HTTPException(status_code=400, detail="falta resource_id")
+    return {"deleted": mapping_state.delete(rid)}
+
+
+@router.get("/mapping/preview")
+def mapping_preview(resource_id: str) -> Any:
+    """Compara el package automático con el efectivo (auto + overrides) para un
+    recurso, usando lo último recibido como muestra. Para la UI de mapeo."""
+    from app import mapping_state, pub_state
+    from services.ckan_publisher import to_ckan_package
+    e = next((r for r in pub_state.snapshot()["resources"]
+              if r.get("resource_id") == resource_id), {}) or {}
+    stub = {
+        "resource_name": e.get("resource_name") or resource_id,
+        "id": e.get("received_dataset_id"),
+        "version": e.get("received_version"),
+        "publisher": e.get("publisher"),
+        "description": "",
+    }
+    sample_urls = {"data": "https://odmgr.pepelui.es/.../data.jsonl"}
+    ov = mapping_state.get(resource_id)
+    return {
+        "resource_id": resource_id,
+        "overrides": ov,
+        "auto": to_ckan_package(stub, sample_urls),
+        "effective": to_ckan_package(stub, sample_urls, overrides=ov),
+    }
+
+
 @router.get("/publication")
 def publication() -> Any:
     """Estado del pipeline de publicación por recurso (versión recibida vs

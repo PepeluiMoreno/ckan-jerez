@@ -39,6 +39,8 @@ createApp({
     const view = ref('recursos')
     const nav = [
       { id:'recursos', label:'🗂️ Recursos' },
+      { id:'publicacion', label:'📤 Publicación' },
+      { id:'mapeo', label:'🗺️ Mapeo' },
       { id:'actividad', label:'📨 Recepciones' },
     ]
     const err = ref('')
@@ -54,6 +56,11 @@ createApp({
     const notifications = ref([])
     const fetchers = ref([])
     const odmPubs = ref([])
+    const publication = ref({ resources:[], count:0 })
+    const mapping = ref({ mappings:[], count:0 })
+    const mapEdit = reactive({ open:false, rid:'', name:'', has:false,
+      form:{ owner_org:'', license_id:'', title:'', notes:'', tags:'', groups:'' },
+      preview:null })
 
     const filtros = reactive({ q:'', pub:'', soloSus:true })
     const subDialog = reactive({ open:false, rid:null, name:'', autoUpgrade:'patch', pinned:'' })
@@ -108,6 +115,7 @@ createApp({
 
     // ── derivados ──
     const subByResource = computed(() => { const m={}; for (const s of subscriptions.value) m[s.resourceId]=s; return m })
+    const mapByResource = computed(() => { const m={}; for (const e of mapping.value.mappings) m[e.resource_id]=e; return m })
     const lastOk = computed(() => {
       const m = {}
       for (const e of executions.value)
@@ -168,6 +176,43 @@ createApp({
     async function loadActividad() {
       try { notifications.value = await api('/odm/notifications') } catch {}
     }
+    async function loadPublicacion() { publication.value = await api('/publication') }
+    async function loadMapeo() {
+      mapping.value = await api('/mapping')
+      try { publication.value = await api('/publication') } catch {}
+    }
+    function pubStatusLabel(s){ return {ok:'al día', desfasado:'desfasado', pendiente:'pendiente', error:'error'}[s] || s }
+    function pubPillStyle(s){
+      const c = {ok:['#064e3b','#34d399'], desfasado:['#78350f','#fbbf24'], pendiente:['#374151','#9ca3af'], error:['#7f1d1d','#f87171']}[s] || ['#374151','#9ca3af']
+      return { background:c[0], color:c[1] }
+    }
+    function abrirMapeo(rid, name) { run(async () => {
+      mapEdit.rid = rid; mapEdit.name = name || rid
+      const snap = mapping.value.mappings.find(m => m.resource_id === rid)
+      const ov = (snap && snap.overrides) || {}
+      mapEdit.has = !!snap
+      mapEdit.form = { owner_org: ov.owner_org||'', license_id: ov.license_id||'',
+                       title: ov.title||'', notes: ov.notes||'',
+                       tags: (ov.tags||[]).join(', '), groups: (ov.groups||[]).join(', ') }
+      mapEdit.preview = await api('/mapping/preview?resource_id=' + encodeURIComponent(rid))
+      mapEdit.open = true
+    }) }
+    function _overridesFromForm() {
+      const f = mapEdit.form, lst = s => (s||'').split(',').map(x=>x.trim()).filter(Boolean)
+      return { owner_org:f.owner_org, license_id:f.license_id, title:f.title, notes:f.notes,
+               tags:lst(f.tags), groups:lst(f.groups) }
+    }
+    function guardarMapeo() { run(async () => {
+      await api('/mapping', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:mapEdit.rid, overrides:_overridesFromForm()})})
+      mapping.value = await api('/mapping')
+      mapEdit.has = true
+      mapEdit.preview = await api('/mapping/preview?resource_id=' + encodeURIComponent(mapEdit.rid))
+    }) }
+    function borrarMapeo() { run(async () => {
+      await api('/mapping/delete', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_id:mapEdit.rid})})
+      mapping.value = await api('/mapping')
+      mapEdit.open = false
+    }) }
     async function loadOnboarding() { Object.assign(onboarding, await api('/onboarding')); onboardingCargado.value = true }
     function enviarSolicitud() { run(async () => {
       onboarding.solicitud = await api('/onboarding/solicitar', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(altaForm)})
@@ -176,7 +221,7 @@ createApp({
       proposeDone.value=null
       proposeDone.value = await api('/odm/propose', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(proposeForm)})
     }) }
-    const loaders = { recursos: loadRecursos, actividad: loadActividad }
+    const loaders = { recursos: loadRecursos, publicacion: loadPublicacion, mapeo: loadMapeo, actividad: loadActividad }
     function go(id) { view.value = id; if (loaders[id]) run(loaders[id]) }
 
     // ── acciones ──
@@ -277,6 +322,8 @@ createApp({
 
     return { view, nav, err, busy, appVersion, ram, ramPct, ramColor, status, syncLabel,
              catalog, resources, subscriptions, executions, notifications, fetchers, odmPubs,
+             publication, mapping, mapByResource, mapEdit,
+             loadPublicacion, loadMapeo, pubStatusLabel, pubPillStyle, abrirMapeo, guardarMapeo, borrarMapeo,
              filtros, modal, showWizard, wizard, presetsOf, pubsDisponibles, pubsOdmExtra,
              subByResource, lastOk, pendientes, recursosFiltrados,
              esNodriza, expandidas, toggleNodriza, hijosDe, topNivel,
@@ -368,7 +415,7 @@ createApp({
       <div class="flex items-center justify-between mb-1">
         <h2 class="text-xl font-bold text-gray-100">Recursos</h2>
       </div>
-      <p class="text-sm text-gray-400 mb-5">Orígenes de datos de los que se abastece CKAN-Jerez.</p>
+      <p class="text-sm text-gray-400 mb-5">Orígenes de los que se abastece CKAN-Jerez. La suscripción (a qué recursos y con qué versión) se gestiona en ODM; aquí se muestra en modo lectura.</p>
 
       <div v-if="onboarding.eventos && onboarding.eventos.length" class="card p-5 mb-5">
         <h3 class="text-sm font-semibold text-gray-200 mb-2">Avisos de ODM</h3>
@@ -402,8 +449,8 @@ createApp({
               </td>
               <td class="text-gray-400">{{ r.publisher || '—' }}</td>
               <td>
-                <button v-if="subByResource[r.id]" class="pill" style="background:#064e3b;color:#34d399;border:0;cursor:pointer" :disabled="busy" @click="desuscribir(r.id)" title="Pulsar para desuscribir">✓ suscrito</button>
-                <button v-else class="pill bg-gray-700 text-gray-300" style="border:0;cursor:pointer" :disabled="busy || !status.application" @click="abrirSuscribir(r)" :title="status.application ? 'Pulsar para suscribir' : 'Requiere Application registrada'">suscribir</button>
+                <span v-if="subByResource[r.id]" class="pill" style="background:#064e3b;color:#34d399">✓ suscrito</span>
+                <span v-else class="text-gray-600">—</span>
               </td>
               <td :style="{color: (lastOk[r.id] && (Date.now()-new Date(lastOk[r.id]+'Z').getTime())<3600000) ? '#34d399' : '#6b7280'}">{{ fmtAgo(lastOk[r.id]) }}</td>
             </tr>
@@ -411,8 +458,8 @@ createApp({
               <td class="text-gray-300" :title="c.id"><span class="text-gray-600" style="padding-left:1.25rem">└─</span> {{ c.name }} <span class="pill" style="background:#3b0764;color:#c4b5fd;font-size:.62rem">descubierto</span></td>
               <td class="text-gray-500">{{ c.publisher || '—' }}</td>
               <td>
-                <button v-if="subByResource[c.id]" class="pill" style="background:#064e3b;color:#34d399;border:0;cursor:pointer" :disabled="busy" @click="desuscribir(c.id)" title="Pulsar para desuscribir">✓ suscrito</button>
-                <button v-else class="pill bg-gray-700 text-gray-300" style="border:0;cursor:pointer" :disabled="busy || !status.application" @click="abrirSuscribir(c)" :title="status.application ? 'Pulsar para suscribir' : 'Requiere Application registrada'">suscribir</button>
+                <span v-if="subByResource[c.id]" class="pill" style="background:#064e3b;color:#34d399">✓ suscrito</span>
+                <span v-else class="text-gray-600">—</span>
               </td>
               <td :style="{color: (lastOk[c.id] && (Date.now()-new Date(lastOk[c.id]+'Z').getTime())<3600000) ? '#34d399' : '#6b7280'}">{{ fmtAgo(lastOk[c.id]) }}</td>
             </tr>
@@ -422,6 +469,45 @@ createApp({
       </div>
 
 
+    </div>
+
+    <!-- Publicación -->
+    <div v-else-if="view==='publicacion'">
+      <h2 class="text-xl font-bold text-gray-100 mb-1">Publicación</h2>
+      <p class="text-sm text-gray-400 mb-5">Estado del volcado a CKAN por recurso: versión recibida frente a la publicada, errores y reintentos.</p>
+      <div class="card p-5">
+        <table class="w-full"><thead><tr><th>Recurso</th><th>Estado</th><th>Recibida</th><th>Publicada</th><th>Reintentos</th><th>Último error</th></tr></thead>
+          <tbody>
+            <tr v-for="r in publication.resources" :key="r.resource_id">
+              <td class="text-gray-200" :title="r.resource_id">{{ r.resource_name || r.resource_id }}<div class="text-gray-500" style="font-size:.7rem">{{ r.publisher || '' }}</div></td>
+              <td><span class="pill" :style="pubPillStyle(r.status)">{{ pubStatusLabel(r.status) }}</span></td>
+              <td class="tabular-nums">{{ r.received_version || '—' }}<div class="text-gray-600" style="font-size:.68rem">{{ fmtAgo(r.received_at) }}</div></td>
+              <td class="tabular-nums">{{ r.published_version || '—' }}<div class="text-gray-600" style="font-size:.68rem">{{ fmtAgo(r.published_at) }}</div></td>
+              <td class="tabular-nums" :style="{color: r.retries ? '#f87171' : '#6b7280'}">{{ r.retries || 0 }}</td>
+              <td class="text-red-300" style="max-width:18rem">{{ r.last_error || '' }}</td>
+            </tr>
+            <tr v-if="!publication.resources.length"><td colspan="6" class="text-gray-500">Aún no se ha recibido ninguna publicación.</td></tr>
+          </tbody></table>
+      </div>
+    </div>
+
+    <!-- Mapeo -->
+    <div v-else-if="view==='mapeo'">
+      <h2 class="text-xl font-bold text-gray-100 mb-1">Mapeo a CKAN</h2>
+      <p class="text-sm text-gray-400 mb-5">Ajustes por recurso al publicar (organización, licencia, título…). Sin ajustes, se usa el mapeo automático.</p>
+      <div class="card p-5">
+        <table class="w-full"><thead><tr><th>Recurso</th><th>Organización</th><th>Licencia</th><th>Ajustes</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="r in publication.resources" :key="r.resource_id">
+              <td class="text-gray-200" :title="r.resource_id">{{ r.resource_name || r.resource_id }}</td>
+              <td class="text-gray-400">{{ (mapByResource[r.resource_id] && mapByResource[r.resource_id].overrides.owner_org) || '—' }}</td>
+              <td class="text-gray-400">{{ (mapByResource[r.resource_id] && mapByResource[r.resource_id].overrides.license_id) || '—' }}</td>
+              <td><span v-if="mapByResource[r.resource_id]" class="pill" style="background:#1e3a8a;color:#93c5fd">personalizado</span><span v-else class="text-gray-600">automático</span></td>
+              <td class="text-right"><button class="btn btn-ghost" @click="abrirMapeo(r.resource_id, r.resource_name)">Editar</button></td>
+            </tr>
+            <tr v-if="!publication.resources.length"><td colspan="5" class="text-gray-500">Aún no hay recursos recibidos para mapear.</td></tr>
+          </tbody></table>
+      </div>
     </div>
 
     <!-- Actividad -->
@@ -448,27 +534,32 @@ createApp({
     </div>
   </div>
 
-  <!-- Modal -->
-  <!-- Diálogo: condiciones de suscripción / refresco -->
-  <div v-if="subDialog.open" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" @click.self="subDialog.open=false">
-    <div class="card p-5 w-full max-w-md">
-      <h3 class="text-lg font-semibold text-gray-100 mb-1">Suscribir recurso</h3>
-      <p class="text-sm text-gray-400 mb-4 truncate" :title="subDialog.name">{{ subDialog.name }}</p>
-      <div class="space-y-3">
-        <label class="block text-xs text-gray-400">Auto-actualización al refrescar
-          <select v-model="subDialog.autoUpgrade" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
-            <option value="patch">patch — siempre la última</option>
-            <option value="minor">minor — última menor</option>
-          </select>
-        </label>
-        <label class="block text-xs text-gray-400">Versión fija (opcional)
-          <input v-model="subDialog.pinned" placeholder="p. ej. 1.2.0 — vacío = seguir auto" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
-        </label>
-        <p class="text-xs text-gray-500">Si fijas una versión, ODM no te refresca a nuevas versiones automáticamente; pídelo a demanda cuando lo necesites.</p>
+  <!-- Editor de mapeo a CKAN -->
+  <div v-if="mapEdit.open" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" @click.self="mapEdit.open=false">
+    <div class="card p-5 w-full max-w-2xl" style="max-height:88vh;overflow-y:auto">
+      <div class="flex items-start justify-between mb-1">
+        <h3 class="text-lg font-semibold text-gray-100 truncate" :title="mapEdit.name">Mapeo · {{ mapEdit.name }}</h3>
+        <button class="text-gray-400 hover:text-white text-2xl leading-none px-2" @click="mapEdit.open=false">✕</button>
       </div>
-      <div class="flex justify-end gap-2 mt-5">
-        <button class="btn btn-ghost" @click="subDialog.open=false">Cancelar</button>
-        <button class="btn btn-primary" :disabled="busy" @click="confirmarSuscribir">Suscribir</button>
+      <p class="text-xs text-gray-500 mb-4">Lo que dejes vacío toma el valor del mapeo automático. El nombre del package no es editable (es la clave que evita duplicados).</p>
+      <div class="grid grid-cols-2 gap-3">
+        <label class="text-xs text-gray-400">Organización CKAN (owner_org)<input v-model="mapEdit.form.owner_org" placeholder="p. ej. ayuntamiento-de-jerez" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+        <label class="text-xs text-gray-400">Licencia (license_id)<input v-model="mapEdit.form.license_id" placeholder="p. ej. cc-by" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+        <label class="text-xs text-gray-400 col-span-2">Título<input v-model="mapEdit.form.title" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+        <label class="text-xs text-gray-400 col-span-2">Notas<textarea v-model="mapEdit.form.notes" rows="2" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></textarea></label>
+        <label class="text-xs text-gray-400">Tags (separadas por coma)<input v-model="mapEdit.form.tags" placeholder="subvenciones, bdns" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+        <label class="text-xs text-gray-400">Grupos (separados por coma)<input v-model="mapEdit.form.groups" class="block w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200"></label>
+      </div>
+      <div v-if="mapEdit.preview" class="mt-4">
+        <div class="text-xs text-gray-400 mb-1">Package efectivo (automático + ajustes guardados)</div>
+        <pre>{{ JSON.stringify(mapEdit.preview.effective, null, 2) }}</pre>
+      </div>
+      <div class="flex justify-between gap-2 mt-5">
+        <button class="btn btn-danger" :disabled="busy || !mapEdit.has" @click="borrarMapeo" title="Vuelve al mapeo automático">Quitar ajustes</button>
+        <div class="flex gap-2">
+          <button class="btn btn-ghost" @click="mapEdit.open=false">Cerrar</button>
+          <button class="btn btn-primary" :disabled="busy" @click="guardarMapeo">Guardar</button>
+        </div>
       </div>
     </div>
   </div>
@@ -512,7 +603,8 @@ createApp({
           <li><b>Solicitar alta</b>: envías una solicitud a ODM; queda <i>pendiente</i>.</li>
           <li><b>Aprobación</b>: un administrador de ODM la aprueba y emite un <b>token</b> (visible una sola vez).</li>
           <li><b>Token</b>: lo pegas aquí; desde entonces ckan-jerez actúa como aplicación identificada.</li>
-          <li><b>Suscripción</b>: en «Recursos» te suscribes a los que te interesen; ODM avisa por webhook al haber datos nuevos.</li>
+          <li><b>Suscripción</b>: a qué recursos y con qué versión se decide <b>en ODM</b>; aquí se ve en modo lectura. ODM avisa por webhook al haber datos nuevos.</li>
+          <li><b>Publicación y Mapeo</b>: en «Publicación» ves el estado del volcado a CKAN por recurso; en «Mapeo» ajustas cómo se publica cada uno (organización, licencia…).</li>
           <li><b>Propuesta</b>: puedes <b>proponer</b> recursos nuevos; ODM los crea <i>pendientes</i> y un administrador los aprueba antes de ejecutarlos.</li>
         </ol>
         <p class="text-gray-200 font-medium">Productor vs. consumidor</p>

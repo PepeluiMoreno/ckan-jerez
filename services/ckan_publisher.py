@@ -43,13 +43,41 @@ def _format_from_url(url: str) -> str:
     return _FORMAT_BY_EXT.get(ext, "")
 
 
+def apply_overrides(pkg: dict, overrides: Optional[dict]) -> dict:
+    """Aplica overrides de mapeo por recurso sobre el package automático.
+
+    El mapeo automático es el suelo; estos ajustes (organización real, licencia,
+    título/notas, tags, grupos, extras) lo pisan. `name` NO es override: es la
+    clave de idempotencia del upsert.
+    """
+    if not overrides:
+        return pkg
+    pkg = {**pkg}
+    for k in ("title", "notes", "owner_org", "license_id", "author",
+              "author_email", "maintainer", "maintainer_email", "url", "private"):
+        if overrides.get(k) not in (None, ""):
+            pkg[k] = overrides[k]
+    if overrides.get("tags"):
+        pkg["tags"] = [{"name": t} for t in overrides["tags"] if t]
+    if overrides.get("groups"):
+        pkg["groups"] = [{"name": g} for g in overrides["groups"] if g]
+    extra_over = overrides.get("extras")
+    if isinstance(extra_over, dict) and extra_over:
+        merged = {e["key"]: e["value"] for e in pkg.get("extras", [])}
+        merged.update(extra_over)
+        pkg["extras"] = [{"key": k, "value": v} for k, v in merged.items()]
+    return pkg
+
+
 def to_ckan_package(dataset: dict, download_urls: Optional[dict] = None, *,
-                    publisher: Optional[Any] = None) -> dict:
+                    publisher: Optional[Any] = None,
+                    overrides: Optional[dict] = None) -> dict:
     """Mapea un dataset de ODM a un package CKAN (DCAT). Función pura.
 
     - `dataset`: metadatos (resource_name, id, version, description, …).
     - `download_urls`: {clave: url} de las distribuciones (p. ej. {'data': '…jsonl'}).
     - `publisher`: dict {acronimo, nombre, …} o nombre suelto (DCAT publisher / owner_org).
+    - `overrides`: ajustes de mapeo por recurso que pisan el mapeo automático.
     """
     download_urls = download_urls or {}
     title = dataset.get("resource_name") or dataset.get("name") or "Dataset"
@@ -88,7 +116,7 @@ def to_ckan_package(dataset: dict, download_urls: Optional[dict] = None, *,
     }
     if pub_acro:
         pkg["owner_org"] = slugify(pub_acro)
-    return pkg
+    return apply_overrides(pkg, overrides)
 
 
 class CkanSink(Protocol):
@@ -132,7 +160,7 @@ class HttpCkanSink:
 
 
 def publish_dataset(sink: CkanSink, dataset: dict, download_urls: Optional[dict] = None, *,
-                    publisher: Optional[Any] = None) -> dict:
+                    publisher: Optional[Any] = None, overrides: Optional[dict] = None) -> dict:
     """Homogeneiza y publica un dataset: mapea a CKAN/DCAT y hace upsert en el sink."""
-    pkg = to_ckan_package(dataset, download_urls, publisher=publisher)
+    pkg = to_ckan_package(dataset, download_urls, publisher=publisher, overrides=overrides)
     return {"package": pkg, "result": sink.upsert_package(pkg)}

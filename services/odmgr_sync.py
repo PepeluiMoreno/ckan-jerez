@@ -11,6 +11,7 @@ import hmac
 from typing import Optional
 
 from app import pub_state
+from app import mapping_state
 from services.ckan_publisher import CkanSink, publish_dataset
 
 
@@ -36,8 +37,10 @@ def handle_notification(payload: dict, *, sink: CkanSink,
     pub_state.record_received(dataset)
     rid = dataset.get("resource_id")
     version = dataset.get("version")
+    overrides = mapping_state.get(rid) if rid else {}
     try:
-        out = publish_dataset(sink, dataset, download_urls, publisher=publisher)
+        out = publish_dataset(sink, dataset, download_urls, publisher=publisher,
+                              overrides=overrides)
     except Exception as exc:  # noqa: BLE001
         pub_state.record_error(rid, version, str(exc))
         raise
