@@ -102,6 +102,14 @@ def status() -> dict:
     return out
 
 
+@router.get("/publication")
+def publication() -> Any:
+    """Estado del pipeline de publicación por recurso (versión recibida vs
+    publicada, error, reintentos, histórico). Trabajo del cliente, no de ODM."""
+    from app import pub_state
+    return pub_state.snapshot()
+
+
 @router.get("/catalog")
 def catalog() -> dict:
     return _catalog()

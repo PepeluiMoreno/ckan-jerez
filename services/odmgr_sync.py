@@ -10,6 +10,7 @@ import hashlib
 import hmac
 from typing import Optional
 
+from app import pub_state
 from services.ckan_publisher import CkanSink, publish_dataset
 
 
@@ -32,7 +33,15 @@ def handle_notification(payload: dict, *, sink: CkanSink,
         acro = dataset.get("publisher_acronimo") or dataset.get("publisher_id")
         publisher = publishers.get(acro) if acro else None
 
-    out = publish_dataset(sink, dataset, download_urls, publisher=publisher)
+    pub_state.record_received(dataset)
+    rid = dataset.get("resource_id")
+    version = dataset.get("version")
+    try:
+        out = publish_dataset(sink, dataset, download_urls, publisher=publisher)
+    except Exception as exc:  # noqa: BLE001
+        pub_state.record_error(rid, version, str(exc))
+        raise
+    pub_state.record_published(rid, version, out["result"]["name"], out["result"]["action"])
     return {
         "action": "published",
         "package": out["result"]["name"],
